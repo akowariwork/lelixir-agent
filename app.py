@@ -2,7 +2,7 @@
 ===========================================================
 LELIXIR AI AGENT — WhatsApp Auto-Reply via Fonnte + Claude
 ===========================================================
-Versi: 2.0 (Final) — System Prompt sudah tertanam
+Versi: 2.1 — Updated distributor links + flash sale info
 Model: claude-sonnet-4-6
 ===========================================================
 """
@@ -87,44 +87,45 @@ Kenapa 3 Box Paling Direkomendasikan:
 - Paket paling banyak dipilih customer
 - Harga per sachet paling hemat
 
-## LINK PEMBELIAN (DISTRIBUTOR PER KOTA)
+## LINK PEMBELIAN — OFFICIAL STORE & RESELLER
 
-Toko Official (Surabaya):
-OWL Official Store — Shopee Mall
-https://shopee.co.id/OWL-LELIXIR-Minuman-Diet-Penurun-Berat-Badan-paling-Ampuh-BPOM-Pelangsing-Aman-i.570697917.29330758550
+PENTING: Setiap kali kasih link belanja, SELALU tambahkan info soft selling ini:
+"Cek aja dulu Kak, sering ada promo flash sale dan free produk dari masing-masing distributor!"
 
-SURABAYA TIMUR:
-Lala Healthy — Shopee
-https://shopee.co.id/LELIXIR-Detox-Drink-Blackcurrant-(10-Sachet)-Metabolism-Booster-Mengecilkan-Linkar-Tubuh-Diet-Sehat-i.382878716.56201721230
+JAKARTA:
 
-SURABAYA BARAT:
-Healthy Mealblend — Shopee
-https://shopee.co.id/LELIXIR-Minuman-Diet-Tinggi-Serat-Rasa-Blackcurrant-1-Box-(10-Sachet)-i.1334209574.42926707317
+Jakarta Selatan:
+- Spencer Mealblend Store: https://s.shopee.co.id/9ALdD7gJI8
+- Mealblend Store: https://s.shopee.co.id/20sSgZn5yr
 
-JAKARTA BARAT Opsi 1:
-Hotto Purto Official — Shopee
-https://shopee.co.id/LELIXIR-Diet-Rasa-Blackcurrant-1-BOX-(10-Sachet)-i.804937761.56654346201
+Jakarta Barat:
+- Hotto Purto Official Jakbar: https://s.shopee.co.id/7VDPEOPBXg
+- Spencers Mealblend: https://s.shopee.co.id/3B4Q4efrzq
 
-JAKARTA BARAT Opsi 2:
-Spencers Mealblend Store — Shopee
-https://shopee.co.id/LELIXIR-Minuman-Fiber-Serat-Tinggi-Blackcurant-(1-BOX)-Diet-Ampuh-Penurun-Berat-Badan-Pelangsing-i.1254012674.54703216854
+Jakarta Utara:
+- Purnomo Jaya Store: https://s.shopee.co.id/902D10RiTH
+- Hotto_id (Tokopedia): https://s.shopee.co.id/20sSgZn5yr
 
-JAKARTA SELATAN:
-Spencers Mealblend — Shopee
-https://shopee.co.id/HARGA-PROMO-LELIXIR-Minuman-Diet-Blackcurrant-Kecilkan-Lingkar-Perut-Atasi-Bloating-Boost-Metabolisme-BPOM-1-Box-10-Sachet-i.1401337583.48352031098
+SURABAYA:
 
-JAKARTA UTARA:
-Hotto ID — Tokopedia
-https://www.tokopedia.com/hottoid/promo-lelixir-minuman-fiber-untuk-detox-rasa-blackcurrant-1-box-isi-10-sachet-1733233159850984950
+Surabaya Timur:
+- Lala Healthy Shop: https://s.shopee.co.id/3g0gf3iVQE
 
-JOGJAKARTA:
-Segera tersedia — hubungi admin untuk info lebih lanjut.
+Surabaya Barat:
+- Healthy Mealblend: https://s.shopee.co.id/9zukCuzXzV
+
+Surabaya (Shopee Mall / Official):
+- OWL Mall: https://s.shopee.co.id/8V5wQ0na9y
+
+YOGYAKARTA / JAWA TENGAH:
+- 242you: https://s.shopee.co.id/6Ai1e2oWVx
 
 Cara Memberikan Link:
-1. Tanya lokasi customer dulu
-2. Berikan link sesuai kota/area mereka
-3. Kalau kota belum ada distributor: arahkan ke OWL Official Store
-4. Sebutkan keuntungan marketplace: voucher gratis ongkir, cashback, COD
+1. Tanya lokasi customer dulu: "Kakak lokasinya di mana ya? Biar saya kasih link toko terdekat supaya ongkirnya lebih murah"
+2. Berikan link sesuai kota/area mereka. Kalau ada lebih dari 1 opsi di kota itu, kasih semua opsi.
+3. Kalau kota belum ada distributor: arahkan ke OWL Mall (Shopee Mall) atau toko yang paling dekat
+4. SELALU tutup dengan: "Cek aja dulu Kak, sering ada promo flash sale dan free produk dari masing-masing toko!"
+5. Sebutkan juga keuntungan marketplace: voucher gratis ongkir, cashback, COD
 
 ## INFORMASI PRODUK
 
@@ -156,10 +157,22 @@ Jika ada yang tanya jadi distributor/reseller:
 3. Value Close: Rp 14.000 per hari, lebih murah dari sebotol kopi
 4. Urgency Ringan: Kalau kakak udah sreg, langsung aja checkout ya
 5. Follow-Up Close: Kak, tadi sudah sempat cek linknya?
+6. Flash Sale Close: Cek aja dulu Kak di toko terdekat, sering ada promo flash sale dan free produk!
 
 ## ESKALASI
 
 Eskalasi jika: detail distributor, customer marah, refund/retur, masalah pengiriman, minta bicara manusia, negosiasi harga khusus.
+Cara: "Terima kasih ya Kak! Untuk hal ini, saya sambungkan kakak dengan admin kami supaya bisa dibantu lebih detail. Mohon tunggu sebentar ya"
+
+## YANG TIDAK BOLEH DILAKUKAN (SALES)
+
+- Jangan hard selling / pressure customer
+- Jangan klaim hasil pasti
+- Jangan menjelek-jelekkan kompetitor
+- Jangan kasih harga di luar daftar resmi
+- Jangan jawab detail skema distributor
+- Jangan kirim pesan terlalu panjang
+- Jangan lupa tanya lokasi sebelum kasih link
 
 ---
 
@@ -408,7 +421,7 @@ def webhook():
 def home():
     return jsonify({
         "status": "active",
-        "app": "Lelixir AI Agent v2.0",
+        "app": "Lelixir AI Agent v2.1",
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }), 200
 
@@ -420,7 +433,7 @@ def health():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("LELIXIR AI AGENT v2.0 — SERVER STARTED")
+    print("LELIXIR AI AGENT v2.1 — SERVER STARTED")
     print("=" * 50)
     print(f"Model: claude-sonnet-4-6")
     print(f"Claude API: {'OK' if ANTHROPIC_API_KEY else 'NOT SET!'}")
