@@ -264,7 +264,7 @@ Yang bisa dibantu: Meal Plan Personal, Workout Plan, Konsultasi Kondisi Khusus, 
 Syaratnya simpel:
 1. Beli 3 Box Lelixir (30 sachet untuk 30 hari)
 2. Kirim foto stock 3 box + resi belanja Shopee ke chat ini
-3. Daftarkan nama lengkap kakak
+3. Daftarkan nama lengkap kakak + Kirim foto Timbangan BB dan Lingkar perut
 4. Mulai besok setelah pendaftaran, setiap hari selama 30 hari kirim 4 foto:
    - Foto sarapan pagi
    - Foto makan siang
