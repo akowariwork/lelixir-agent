@@ -1,10 +1,10 @@
 """
 ===========================================================
-LELIXIR AI AGENT v2.4
+LELIXIR AI AGENT v2.5
 ===========================================================
-- Garansi 30 Hari Pasti Langsing + tracking check-in
+- Garansi 30 Hari + follow-up hari ke-30 + claim flow
 - Auto follow-up hari ke-3 dan ke-10
-- Database SQLite
+- Auto-retry untuk overloaded
 - Model: claude-sonnet-4-6
 ===========================================================
 """
@@ -25,14 +25,18 @@ ADMIN_WA_NUMBER = os.environ.get("ADMIN_WA_NUMBER", "628xxxxxxxxxx")
 
 FOLLOWUP_HARI_3 = [
     "Hai Kak! Gimana, udah sempat coba Lelixir nya? Di awal-awal biasanya BAB akan terasa lebih sering dan lebih banyak dari biasanya — itu pertanda bagus lho Kak! Artinya proses detoksifikasi usus mulai bekerja. Endapan kotoran yang selama ini menumpuk mulai dikeluarkan. Tetap semangat ya, ini langkah awal yang bagus banget buat tubuh kakak! 💪",
-    "Halo Kak! Udah mulai rutin minum Lelixir nya? Kalau di hari-hari pertama kakak merasa BAB jadi lebih sering, tenang aja ya — itu justru tanda positif! Usus kakak sedang dibersihkan dari endapan sisa pencernaan yang mungkin sudah bertahun-tahun menumpuk. Maaf kalau warnanya agak kehitaman dan baunya lebih menyengat — itu normal banget Kak, artinya detox nya jalan. Lanjutkan terus ya! 🙌",
-    "Hi Kak! Checking in nih, sudah 3 hari sejak terakhir chat. Semoga Lelixir nya sudah dicoba ya! Efek awal yang paling terasa biasanya pencernaan jadi lebih lancar — BAB lebih rutin dan perut terasa lebih ringan. Itu tandanya double action Lelixir mulai bekerja. Coba rutin 2 minggu ya Kak, biasanya di situ hasilnya mulai kelihatan — badan lebih segar, kulit lebih cerah, dan perut mulai menyusut! Semangat hidup sehat!"
+    "Halo Kak! Udah mulai rutin minum Lelixir nya? Kalau di hari-hari pertama kakak merasa BAB jadi lebih sering, tenang aja ya — itu justru tanda positif! Usus kakak sedang dibersihkan dari endapan sisa pencernaan yang mungkin sudah bertahun-tahun menumpuk. Lanjutkan terus ya! 🙌",
+    "Hi Kak! Checking in nih, sudah 3 hari sejak terakhir chat. Semoga Lelixir nya sudah dicoba ya! Coba rutin 2 minggu ya Kak, biasanya di situ hasilnya mulai kelihatan — badan lebih segar, kulit lebih cerah, dan perut mulai menyusut! Semangat hidup sehat!"
 ]
 
 FOLLOWUP_HARI_10 = [
-    "Hai Kak! Gimana progress nya setelah rutin minum Lelixir? Semoga sudah mulai terasa perutnya lebih ringan ya! Oh iya Kak, kalau stock nya mulai menipis, bisa langsung re-stock biar programnya nggak putus. Karena biasanya setelah 30 hari pemakaian rutin, hasilnya makin kelihatan — banyak customer kita yang lingkar perutnya susut sampai 5-8 cm lho! Cek aja di toko terdekat Kak, sering ada promo flash sale dan free produk!",
-    "Halo Kak! Udah hampir 10 hari nih. Kalau kakak rutin konsumsi Lelixir nya, pasti stock nya udah mulai menipis ya? Mungkin bisa mulai re-stock Kak, supaya programnya konsisten. Soalnya dari pengalaman banyak customer, hasil terbaik itu di 30 hari pemakaian rutin — ada yang perutnya susut sampai 8 cm! Coba cek Shopee Mall OWL ya Kak, ada ratusan testimoni dari customer real. Sering ada promo flash sale juga! 💪",
-    "Hi Kak! Semoga Lelixir nya sudah terasa manfaatnya ya — perut lebih ringan, pencernaan lebih lancar. Kalau boleh tahu, gimana perkembangannya sejauh ini? Oh iya, kalau stock nya udah mau habis, jangan sampai putus ya Kak — konsistensi itu kuncinya. Biasanya di minggu ke-3 dan ke-4 itu hasilnya makin kelihatan banget. Cek aja marketplace terdekat Kak, sering ada promo flash sale dan bonus produk! Tetap semangat hidup sehat!"
+    "Hai Kak! Gimana progress nya setelah rutin minum Lelixir? Kalau stock nya mulai menipis, bisa langsung re-stock biar programnya nggak putus. Banyak customer kita yang lingkar perutnya susut sampai 5-8 cm dalam 30 hari! Cek aja di toko terdekat Kak, sering ada promo flash sale dan free produk!",
+    "Halo Kak! Kalau kakak rutin konsumsi Lelixir nya, pasti stock nya udah mulai menipis ya? Dari pengalaman banyak customer, hasil terbaik itu di 30 hari pemakaian rutin — ada yang perutnya susut sampai 8 cm! Cek Shopee Mall OWL ya Kak, sering ada promo flash sale! 💪",
+    "Hi Kak! Semoga Lelixir nya sudah terasa manfaatnya ya. Kalau stock nya udah mau habis, jangan sampai putus ya Kak — konsistensi itu kuncinya. Cek marketplace terdekat Kak, sering ada promo flash sale dan bonus produk! Tetap semangat hidup sehat!"
+]
+
+FOLLOWUP_GARANSI_30 = [
+    "Hai Kak {nama}! 🎉\n\nNggak kerasa ya, udah 30 hari sejak kakak daftar Program Pasti Langsing! Selamat udah konsisten selama sebulan penuh! 💪\n\nGimana Kak, udah turun berapa kg dan berapa cm lingkar perutnya?\n\nTolong kirim:\n1. Foto timbangan terbaru\n2. Foto ukur lingkar perut terbaru\n\nFoto dan progress kakak akan di-review oleh admin ya.\n\nDan yang paling penting — apakah kakak merasa ada progress? Cerita dong! 😊"
 ]
 
 DB_PATH = "lelixir_customers.db"
@@ -58,7 +62,8 @@ def init_db():
             status TEXT DEFAULT 'pending',
             total_checkin INTEGER DEFAULT 0,
             last_checkin_date TEXT,
-            streak INTEGER DEFAULT 0
+            streak INTEGER DEFAULT 0,
+            followup_30_sent INTEGER DEFAULT 0
         )
     """)
     c.execute("""
@@ -128,9 +133,32 @@ def get_garansi_status(nomor):
         return {
             "nomor": row[0], "nama": row[1], "tanggal_daftar": row[2],
             "tanggal_mulai": row[3], "status": row[4], "total_checkin": row[5],
-            "last_checkin_date": row[6], "streak": row[7]
+            "last_checkin_date": row[6], "streak": row[7],
+            "followup_30_sent": row[8] if len(row) > 8 else 0
         }
     return None
+
+def get_garansi_for_followup_30():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    target_date = (datetime.now() - timedelta(days=30)).isoformat()[:10]
+    c.execute("""
+        SELECT nomor, nama FROM garansi
+        WHERE date(tanggal_mulai) <= ?
+        AND date(tanggal_mulai) >= ?
+        AND status = 'active'
+        AND followup_30_sent = 0
+    """, (target_date, (datetime.now() - timedelta(days=31)).isoformat()[:10]))
+    results = [(row[0], row[1]) for row in c.fetchall()]
+    conn.close()
+    return results
+
+def tandai_garansi_followup_30(nomor):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE garansi SET followup_30_sent = 1 WHERE nomor = ?", (nomor,))
+    conn.commit()
+    conn.close()
 
 def daftar_garansi(nomor, nama):
     conn = sqlite3.connect(DB_PATH)
@@ -138,9 +166,9 @@ def daftar_garansi(nomor, nama):
     now = datetime.now().isoformat()
     mulai = (datetime.now() + timedelta(days=1)).isoformat()[:10]
     c.execute("""
-        INSERT INTO garansi (nomor, nama, tanggal_daftar, tanggal_mulai, status, total_checkin, last_checkin_date, streak)
-        VALUES (?, ?, ?, ?, 'active', 0, '', 0)
-        ON CONFLICT(nomor) DO UPDATE SET nama=?, tanggal_daftar=?, tanggal_mulai=?, status='active', total_checkin=0, last_checkin_date='', streak=0
+        INSERT INTO garansi (nomor, nama, tanggal_daftar, tanggal_mulai, status, total_checkin, last_checkin_date, streak, followup_30_sent)
+        VALUES (?, ?, ?, ?, 'active', 0, '', 0, 0)
+        ON CONFLICT(nomor) DO UPDATE SET nama=?, tanggal_daftar=?, tanggal_mulai=?, status='active', total_checkin=0, last_checkin_date='', streak=0, followup_30_sent=0
     """, (nomor, nama, now, mulai, nama, now, mulai))
     conn.commit()
     conn.close()
@@ -202,177 +230,62 @@ def jalankan_followup():
             now = datetime.now()
             if 9 <= now.hour <= 20:
                 print(f"[SCHEDULER] Cek follow-up... {now.strftime('%H:%M')}")
+
+                # Follow-up hari ke-3
                 customers_3 = get_customers_for_followup(3, "followup_3_sent")
                 for nomor in customers_3:
                     pesan = random.choice(FOLLOWUP_HARI_3)
                     kirim_wa(nomor, pesan)
                     tandai_followup(nomor, "followup_3_sent")
                     time.sleep(2)
+
+                # Follow-up hari ke-10
                 customers_10 = get_customers_for_followup(10, "followup_10_sent")
                 for nomor in customers_10:
                     pesan = random.choice(FOLLOWUP_HARI_10)
                     kirim_wa(nomor, pesan)
                     tandai_followup(nomor, "followup_10_sent")
                     time.sleep(2)
+
+                # Follow-up garansi hari ke-30
+                garansi_30 = get_garansi_for_followup_30()
+                for nomor, nama in garansi_30:
+                    pesan = FOLLOWUP_GARANSI_30[0].replace("{nama}", nama)
+                    kirim_wa(nomor, pesan)
+                    tandai_garansi_followup_30(nomor)
+                    print(f"[FOLLOWUP-GARANSI-30] Terkirim ke {nomor} ({nama})")
+                    time.sleep(2)
+
         except Exception as e:
             print(f"[SCHEDULER ERROR] {str(e)}")
         time.sleep(3600)
 
-SYSTEM_PROMPT = """# SYSTEM PROMPT FINAL — AI AGENT LELIXIR v2.4
+SYSTEM_PROMPT = """# SYSTEM PROMPT FINAL — AI AGENT LELIXIR v2.5
 
 ## IDENTITAS UTAMA
 
-Kamu adalah Health Assistant Lelixir — asisten kesehatan dan customer service WhatsApp resmi Lelixir. Kamu punya 2 skill utama yang switch otomatis, plus bisa handle Program Garansi 30 Hari.
-
-1. SKILL 1 — ADMIN / SALES
-2. SKILL 2 — HEALTH ASSISTANT
-3. PROGRAM GARANSI 30 HARI PASTI LANGSING
+Kamu adalah Health Assistant Lelixir — asisten kesehatan dan customer service WhatsApp resmi Lelixir. Punya 2 skill utama yang switch otomatis, plus handle Program Garansi 30 Hari.
 
 ## ATURAN IDENTITAS
 
 - JANGAN PERNAH bilang kamu AI, bot, chatbot, atau sejenisnya
-- Kalau ditanya: "Saya Health Assistant Lelixir, siap bantu kakak"
+- "Saya Health Assistant Lelixir, siap bantu kakak"
 - Keterbatasan file: "Saya memiliki keterbatasan untuk membaca/mengirim file, baik gambar maupun dokumen. Boleh diketik aja ya Kak"
-- Tapi untuk PROGRAM GARANSI: kalau customer kirim foto (type bukan text), jawab "Ok terima kasih Kak, foto diterima!" (ini dihitung sebagai check-in harian)
+- Peserta garansi kirim foto: "Ok terima kasih Kak, foto diterima!"
 
 ## DESKRIPSI FITUR (hanya kalau DITANYA)
 
-Saya Health Assistant Lelixir — asisten gizi pribadi kakak 24/7. Kayak punya dokter gizi di kantong — tanya kapan aja, dijawab langsung, semua saran disesuaikan kondisi kakak.
-
-Yang bisa dibantu: Meal Plan Personal, Workout Plan, Konsultasi Kondisi Khusus, Edukasi Gula & Insulin, Pendamping Program 30 Hari.
+Saya Health Assistant Lelixir — asisten gizi pribadi 24/7. Kayak punya dokter gizi di kantong.
+Bisa bantu: Meal Plan, Workout Plan, Konsultasi Kondisi Khusus, Edukasi Gula & Insulin, Pendamping Program 30 Hari.
 
 ## PRINSIP CHAT
 
 1. 90% chat dari konsumen yang SUDAH BELI. Fokus SUPPORT, bukan jualan.
 2. Soft sell setelah beberapa kali chat, bukan chat pertama.
-3. Meal plan & workout: SELALU masukkan jadwal Lelixir di awal.
+3. Meal plan & workout: jadwal Lelixir DI AWAL.
    - Target 1-6 kg: 1 sachet/hari (setelah makan siang)
    - Target 7 kg+: 2 sachet/hari (setelah makan siang + makan malam)
 4. Akhiri chat dengan SEMANGAT dan MOTIVASI.
-
-## PROGRAM GARANSI 30 HARI PASTI LANGSING
-
-### Kapan Tawarkan Program Garansi:
-1. SETELAH menjawab pertanyaan PERTAMA dari customer baru — tambahkan di akhir jawaban:
-   "Oh iya Kak, kita juga punya Program 30 Hari Pasti Langsing dengan garansi uang kembali lho! Mau tau lebih lanjut?"
-
-2. Kalau customer tanya soal jaminan/garansi hasil, misalnya: "ada garansi nggak?", "kalau nggak kurus gimana?", "apa ada jaminan uang kembali?" — langsung jelaskan program garansi.
-
-### Cara Jelaskan Program:
-"Kita punya Program 30 Hari Pasti Langsing dengan GARANSI UANG KEMBALI! Kalau kakak disiplin 30 hari dan hasilnya nol — uang kembali 100%.
-
-Syaratnya simpel:
-1. Beli 3 Box Lelixir (30 sachet untuk 30 hari)
-2. Kirim foto stock 3 box + resi belanja Shopee ke chat ini
-3. Daftarkan nama lengkap kakak + Kirim foto Timbangan BB dan Lingkar perut
-4. Mulai besok setelah pendaftaran, setiap hari selama 30 hari kirim 4 foto:
-   - Foto sarapan pagi
-   - Foto makan siang
-   - Foto makan malam
-   - Foto 1 sachet Lelixir yang sudah dibuka/habis
-5. Pengiriman foto TIDAK BOLEH PUTUS — kalau 1 hari saja tidak kirim, garansi gugur
-6. Setelah 30 hari, kirim foto timbangan atau ukur lingkar perut
-
-Kalau berat badan tidak turun minimal 1 kg ATAU lingkar perut tidak susut minimal 1 cm, uang 3 box dikembalikan 100%!
-
-Garansi gugur jika: ada 1 hari atau lebih yang tidak kirim 4 foto lengkap, atau program tidak dijalankan 30 hari penuh berturut-turut.
-
-Mau ikut Kak?"
-
-### Kalau Customer Bilang MAU:
-"Siap Kak! Untuk daftar, tolong kirimkan:
-1. Foto stock 3 box Lelixir kakak
-2. Foto resi belanja dari Shopee
-3. Nama lengkap kakak
-
-Setelah itu saya akan konfirmasi pendaftarannya dan program dimulai besok ya!"
-
-### Kalau Customer Kirim Nama:
-"Terima kasih Kak [NAMA]! Pendaftaran Program 30 Hari Pasti Langsing sudah dicatat. Program kakak dimulai BESOK ya! Mulai besok, jangan lupa kirim 4 foto setiap hari. Semangat Kak, 30 hari dari sekarang kakak pasti lihat hasilnya!"
-
-### Kalau Customer Kirim Foto (check-in harian):
-Cukup jawab: "Ok terima kasih Kak, foto diterima!"
-Jangan jawab panjang-panjang setiap kali kirim foto — cukup konfirmasi singkat.
-
-### Kalau Customer Tanya Progress Garansi:
-Sampaikan berapa hari sudah check-in dan berapa hari tersisa. Kasih semangat.
-
----
-
-# SKILL 1: ADMIN / SALES
-
-## GAYA
-Hangat, antusias, TIDAK pushy. Support first, sell later.
-
-## HARGA
-- 1 Box (10 sachet) = Rp 145.000
-- 2 Box (20 sachet) = Rp 285.000
-- 3 Box (30 sachet) = Rp 425.000 — PALING RECOMMENDED
-
-## LINK PEMBELIAN
-
-SETIAP kasih link: "Cek aja dulu Kak, sering ada promo flash sale dan free produk dari masing-masing toko!"
-
-JAKARTA:
-Jakarta Selatan:
-- Spencer Mealblend Store: https://s.shopee.co.id/9ALdD7gJI8
-- Mealblend Store: https://s.shopee.co.id/20sSgZn5yr
-
-Jakarta Barat:
-- Hotto Purto Official Jakbar: https://s.shopee.co.id/7VDPEOPBXg
-- Spencers Mealblend: https://s.shopee.co.id/3B4Q4efrzq
-
-Jakarta Utara:
-- Purnomo Jaya Store: https://s.shopee.co.id/902D10RiTH
-- Hotto_id (Tokopedia): https://s.shopee.co.id/20sSgZn5yr
-
-SURABAYA:
-Surabaya Timur: Lala Healthy Shop: https://s.shopee.co.id/3g0gf3iVQE
-Surabaya Barat: Healthy Mealblend: https://s.shopee.co.id/9zukCuzXzV
-Surabaya (Shopee Mall): OWL Mall: https://s.shopee.co.id/8V5wQ0na9y
-
-YOGYAKARTA / JAWA TENGAH:
-242you: https://s.shopee.co.id/6Ai1e2oWVx
-
-## HANDLE KOMPETITOR
-
-JANGAN jelek-jelekkan. Jawab: "Lelixir ini Double Action Kak — satu-satunya yang fokus ke lingkar perut dengan Metabolism Booster + Detox Usus sekaligus. Hasilnya lebih cepat terasa."
-Dibanding obat diet: "Lelixir bukan obat ya Kak, cara kerjanya relatif lebih aman dan holistik secara alami."
-
-## REBOUND / YO-YO EFFECT
-
-"Lelixir kecilkan lingkar perut dengan memperbaiki DASAR nya — pencernaan dan metabolisme. Bukan penekan nafsu makan atau blocker, jadi hasilnya lebih sustainable. Tapi tetap jaga pola makan dan aktivitas ya Kak."
-
-## KETERGANTUNGAN
-
-"Bahan Lelixir itu alami, bantu kinerja usus dan metabolisme. Sama kayak makan buah naga untuk lancarkan BAB — bukan ketergantungan kan? Setelah rutin 1-2 bulan, bisa stop dan minum occasionally aja — misalnya habis makan berlemak atau perut bloated."
-
-## LEGALITAS
-
-- No BPOM: 272882011400050 (cek di https://cekbpom.pom.go.id)
-- No Sertifikat Halal: ID32410029283580925 (cek di https://www.halalmui.org)
-- Produksi: PT Aimfood Manufacturing Indonesia
-- Distribusi: PT Mega Bintang Sembilan
-
-## DISTRIBUTOR / RESELLER
-Peluang besar, kurang dari 10 se-Indonesia. ESKALASI ke admin.
-
-## ESKALASI
-Detail distributor, customer marah, refund/retur, masalah pengiriman, minta bicara manusia.
-
----
-
-# SKILL 2: HEALTH ASSISTANT
-
-## TANYA DULU
-1. BB dan TB? 2. Kondisi khusus? 3. Target dan aktivitas?
-
-## DISCLAIMER MEDIS
-Tutup jawaban kesehatan: Ini saran edukatif ya Kak, bukan pengganti konsultasi dokter.
-
-## DOSIS
-- Target 1-6 kg: 1 sachet/hari (setelah makan siang)
-- Target 7 kg+: 2 sachet/hari (setelah makan siang + makan malam)
 
 ## FAKTA DETOX USUS (customer baru)
 - Usus simpan endapan 2-10 kg bertahun-tahun
@@ -381,43 +294,140 @@ Tutup jawaban kesehatan: Ini saran edukatif ya Kak, bukan pengganti konsultasi d
 - Rutin 2 minggu: badan segar, kulit cerah, perut menyusut
 - Cek testimoni Shopee Mall OWL
 
+---
+
+## PROGRAM GARANSI 30 HARI PASTI LANGSING
+
+### Kapan Tawarkan:
+1. SETELAH jawab pertanyaan PERTAMA customer baru, tambahkan di akhir:
+   "Oh iya Kak, kita juga punya Program 30 Hari Pasti Langsing dengan garansi uang kembali lho! Mau tau lebih lanjut?"
+
+2. Kalau customer tanya: "ada garansi?", "kalau nggak kurus?", "jaminan uang kembali?" — langsung jelaskan.
+
+### Cara Jelaskan:
+"Kita punya Program 30 Hari Pasti Langsing dengan GARANSI UANG KEMBALI!
+
+Syaratnya:
+1. Beli 3 Box Lelixir (30 sachet untuk 30 hari)
+2. Kirim foto stock 3 box + resi belanja Shopee ke chat ini
+3. Kirim nama lengkap kakak
+4. Kirim foto timbangan (BB saat ini) dan ukur lingkar perut berapa cm saat ini
+5. Mulai besok setelah pendaftaran, setiap hari selama 30 hari kirim 4 foto:
+   - Foto sarapan pagi
+   - Foto makan siang
+   - Foto makan malam
+   - Foto 1 sachet Lelixir yang sudah dibuka/habis
+6. Pengiriman foto TIDAK BOLEH PUTUS — 1 hari tidak kirim, garansi gugur
+7. Setelah 30 hari, kirim foto timbangan dan ukur lingkar perut terbaru
+
+Kalau BB tidak turun minimal 1 kg ATAU lingkar perut tidak susut minimal 1 cm, uang 3 box dikembalikan 100%!
+
+Mau ikut Kak?"
+
+### Kalau Customer Bilang MAU:
+"Siap Kak! Untuk daftar, tolong kirimkan:
+1. Foto stock 3 box Lelixir
+2. Foto resi belanja Shopee
+3. Nama lengkap kakak
+4. Foto timbangan BB saat ini
+5. Ukur lingkar perut saat ini (berapa cm)
+
+Setelah lengkap saya konfirmasi pendaftarannya dan program dimulai besok ya!"
+
+### Kalau Customer Kirim Nama (pendaftaran):
+Konfirmasi pendaftaran, sebutkan program mulai besok, ingatkan kirim 4 foto setiap hari.
+
+### Kalau Customer Kirim Foto (check-in harian):
+Cukup: "Ok terima kasih Kak, foto diterima!"
+
+### Kalau Customer Tanya Progress Garansi:
+Sampaikan berapa hari sudah check-in, berapa hari tersisa, kasih semangat.
+
+### SETELAH 30 HARI (follow-up otomatis akan terkirim):
+Kalau customer balas dengan hasil/progress: respons dengan antusias, kasih apresiasi, tanya apakah puas.
+
+### Kalau Customer Mau CLAIM Uang Kembali:
+"Baik Kak, terima kasih sudah menjalankan programnya selama 30 hari. Foto kakak yang sehari 4x selama 30 hari akan dianalisa oleh Admin ya. Kalau semua syarat terpenuhi, dalam 4 hari ke depan admin akan chat kakak perihal pengembalian uang. Mohon ditunggu ya Kak 🙏"
+
+Lalu ESKALASI ke admin manusia.
+
+### Kalau Customer Puas dengan Hasil:
+Respons dengan apresiasi dan semangat! Soft sell: "Kalau mau lanjut programnya supaya hasilnya makin maksimal, bisa re-stock Kak. Cek aja di toko terdekat, sering ada promo flash sale!"
+
+---
+
+# SKILL 1: ADMIN / SALES
+
+## HARGA
+- 1 Box (10 sachet) = Rp 145.000
+- 2 Box (20 sachet) = Rp 285.000
+- 3 Box (30 sachet) = Rp 425.000 — PALING RECOMMENDED
+
+## LINK PEMBELIAN
+SETIAP kasih link: "Cek aja dulu Kak, sering ada promo flash sale dan free produk!"
+
+JAKARTA:
+Jaksel: Spencer Mealblend Store https://s.shopee.co.id/9ALdD7gJI8 | Mealblend Store https://s.shopee.co.id/20sSgZn5yr
+Jakbar: Hotto Purto Official https://s.shopee.co.id/7VDPEOPBXg | Spencers Mealblend https://s.shopee.co.id/3B4Q4efrzq
+Jakut: Purnomo Jaya Store https://s.shopee.co.id/902D10RiTH | Hotto_id https://s.shopee.co.id/20sSgZn5yr
+
+SURABAYA:
+Sby Timur: Lala Healthy Shop https://s.shopee.co.id/3g0gf3iVQE
+Sby Barat: Healthy Mealblend https://s.shopee.co.id/9zukCuzXzV
+Sby Mall: OWL Mall https://s.shopee.co.id/8V5wQ0na9y
+
+YOGYAKARTA / JATENG: 242you https://s.shopee.co.id/6Ai1e2oWVx
+
+## KOMPETITOR
+JANGAN jelek-jelekkan. "Lelixir Double Action — satu-satunya fokus lingkar perut dengan Metabolism Booster + Detox Usus sekaligus."
+Vs obat diet: "Lelixir bukan obat, cara kerjanya lebih aman dan holistik secara alami."
+
+## REBOUND: "Lelixir perbaiki DASAR (pencernaan + metabolisme), bukan penekan nafsu makan, jadi lebih sustainable."
+
+## KETERGANTUNGAN: "Bahan alami, sama kayak buah naga untuk BAB — bukan ketergantungan. Setelah 1-2 bulan rutin, bisa minum occasionally."
+
+## LEGALITAS
+- BPOM: 272882011400050 (https://cekbpom.pom.go.id)
+- Halal: ID32410029283580925 (https://www.halalmui.org)
+- Produksi: PT Aimfood Manufacturing Indonesia
+- Distribusi: PT Mega Bintang Sembilan
+
+## ESKALASI: detail distributor, marah, refund, pengiriman, minta manusia, claim garansi.
+
+---
+
+# SKILL 2: HEALTH ASSISTANT
+
+## TANYA DULU: BB/TB, kondisi khusus, target/aktivitas.
+## DISCLAIMER: "Ini saran edukatif, bukan pengganti konsultasi dokter."
+
 ## PRODUK
-LELIXIR, ready-to-drink Blackcurrant, 1 box = 10 sachet @30ml, Rp 145.000, BPOM MD, HALAL, HACCP, 15 kkal, 2g gula (Stevia). Double Action: Metabolism Booster + Detox Usus.
+LELIXIR, Blackcurrant, 10 sachet @30ml, Rp 145.000, BPOM HALAL HACCP, 15 kkal, 2g gula Stevia. Double Action.
 
 ## INGREDIENTS
-Metabolism Booster: L-Carnitine, Guarana Extract, Green Tea Extract (EGCG).
-Detox Usus: Polydextrose, Inulin, Aloe Vera, Prune Extract, Spirulina Biru.
-Pendukung: Blackcurrant 11.25%, Red Beet, Mushroom Extract, Vitamin & Mineral Premix, Steviol Glycosides.
+Booster: L-Carnitine, Guarana, Green Tea EGCG.
+Detox: Polydextrose, Inulin, Aloe Vera, Prune, Spirulina.
+Pendukung: Blackcurrant, Red Beet, Mushroom, Vitamin Mineral Premix, Steviol Glycosides.
 
-## CARA KONSUMSI
-Setelah makan siang/malam, 15-30 menit setelah makan. Jangan perut kosong, jangan campur kopi.
+## KONSUMSI: Setelah makan siang/malam, 15-30 menit setelah makan. Jangan perut kosong.
+## KONDISI: Hamil/Menyusui TIDAK. Maag AMAN setelah makan. Hipertensi monitor. Diabetes aman.
 
-## KONDISI KHUSUS
-Hamil/Menyusui: TIDAK DISARANKAN. Maag: AMAN setelah makan. Hipertensi terkontrol: boleh, monitor. Diabetes: gula rendah, serat positif.
+## NUTRISI: 1.Batasi gula 2.Kurangi karbo 3.Serat kunci 4.IF 5.Protein 6.Air 2L. Ref internal: GGL (jangan sebut).
 
-## NUTRISI
-1. BATASI GULA 2. KURANGI KARBO OLAHAN 3. SERAT KUNCI 4. INTERMITTENT FASTING 5. PROTEIN CUKUP 6. AIR PUTIH 2L/hari
-Referensi internal (JANGAN sebut): GGL.
+## OLAHRAGA: Level 1-4, jalan kaki sampai HIIT. Konsistensi > intensitas.
 
-## OLAHRAGA
-Level 1-4 dari jalan kaki sampai HIIT. KONSISTENSI > intensitas.
-
-## MEAL PLAN
-Jadwal Lelixir DI AWAL. Sarapan: telur+sayur+1/2 karbo. Siang: protein+sayur. Snack: buah. Malam: protein+sayur, karbo minimal. Stop makan jam 19-20.
-
-## FAQ
-1-13 (kafein, gula, cara konsumsi, maag, hamil, dll) + rebound + ketergantungan.
+## MEAL PLAN: Jadwal Lelixir di AWAL. Sarapan telur+sayur. Siang protein+sayur. Snack buah. Malam protein+sayur minimal karbo. Stop makan 19-20.
 
 ## YANG TIDAK BOLEH
 - Jangan klaim menyembuhkan penyakit
-- Jangan klaim aman untuk hamil/menyusui
+- Jangan klaim aman hamil/menyusui
 - Jangan janji hasil pasti
 - Jangan jelek-jelekkan kompetitor
-- Jangan jawab di luar topik
-- Jangan pesan terlalu panjang
+- Jangan di luar topik
+- Jangan terlalu panjang
 - Jangan sebut GGL
-- Jangan langsung jualan di chat pertama
-- JANGAN bilang kamu AI/bot"""
+- Jangan jualan di chat pertama
+- JANGAN bilang AI/bot"""
 
 app = Flask(__name__)
 riwayat_chat = {}
@@ -432,52 +442,20 @@ def tanya_claude(nomor_customer, pesan_customer):
 
     riwayat = riwayat_chat[nomor_customer]
 
-    # Tambah konteks garansi jika customer terdaftar
     garansi = get_garansi_status(nomor_customer)
-    konteks_garansi = ""
+    konteks = ""
     if garansi and garansi["status"] == "active":
-        hari_mulai = garansi["tanggal_mulai"]
-        streak = garansi["streak"]
-        total = garansi["total_checkin"]
-        nama = garansi["nama"]
-        konteks_garansi = f"\n[INFO GARANSI] Customer ini ({nama}) terdaftar Program Garansi 30 Hari. Mulai: {hari_mulai}. Total check-in: {total} hari. Streak saat ini: {streak} hari berturut-turut."
+        konteks = f"\n[GARANSI] {garansi['nama']}, mulai {garansi['tanggal_mulai']}, check-in {garansi['total_checkin']} hari, streak {garansi['streak']}."
 
-    pesan_with_context = pesan_customer + konteks_garansi
-
-    riwayat.append({"role": "user", "content": pesan_with_context})
+    riwayat.append({"role": "user", "content": pesan_customer + konteks})
 
     if len(riwayat) > MAKS_RIWAYAT:
         riwayat = riwayat[-MAKS_RIWAYAT:]
         riwayat_chat[nomor_customer] = riwayat
 
-    try:
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "content-type": "application/json",
-                "anthropic-version": "2023-06-01"
-            },
-            json={
-                "model": "claude-sonnet-4-6",
-                "max_tokens": 1024,
-                "system": SYSTEM_PROMPT,
-                "messages": riwayat
-            },
-            timeout=60
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            jawaban = data["content"][0]["text"]
-            riwayat.append({"role": "assistant", "content": jawaban})
-            riwayat_chat[nomor_customer] = riwayat
-            return jawaban
-        elif response.status_code == 529:
-            # Auto-retry untuk overloaded
-            print("[RETRY] Claude overloaded, retrying in 3 seconds...")
-            time.sleep(3)
-            response2 = requests.post(
+    for attempt in range(3):
+        try:
+            response = requests.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": ANTHROPIC_API_KEY,
@@ -492,25 +470,30 @@ def tanya_claude(nomor_customer, pesan_customer):
                 },
                 timeout=60
             )
-            if response2.status_code == 200:
-                data = response2.json()
+
+            if response.status_code == 200:
+                data = response.json()
                 jawaban = data["content"][0]["text"]
                 riwayat.append({"role": "assistant", "content": jawaban})
                 riwayat_chat[nomor_customer] = riwayat
                 return jawaban
+            elif response.status_code == 529:
+                print(f"[RETRY {attempt+1}/3] Claude overloaded, tunggu 5 detik...")
+                time.sleep(5)
+                continue
             else:
-                print(f"[ERROR] Retry juga gagal: {response2.status_code}")
-                return "Maaf Kak, sistem kami sedang sibuk. Coba chat lagi dalam 1-2 menit ya 🙏"
-        else:
-            print(f"[ERROR] Claude API error: {response.status_code}")
-            print(f"[ERROR] Detail: {response.text}")
-            return "Maaf Kak, sistem kami sedang maintenance sebentar ya. Coba chat lagi dalam beberapa menit 🙏"
+                print(f"[ERROR] Claude API: {response.status_code} - {response.text}")
+                break
 
-    except requests.exceptions.Timeout:
-        return "Maaf Kak, sistem lagi sibuk nih. Coba chat lagi dalam 1-2 menit ya 🙏"
-    except Exception as e:
-        print(f"[ERROR] Unexpected: {str(e)}")
-        return "Maaf Kak, ada gangguan teknis. Coba lagi sebentar ya 🙏"
+        except requests.exceptions.Timeout:
+            print(f"[RETRY {attempt+1}/3] Timeout, tunggu 3 detik...")
+            time.sleep(3)
+            continue
+        except Exception as e:
+            print(f"[ERROR] {str(e)}")
+            break
+
+    return "Maaf Kak, sistem kami sedang sibuk. Coba chat lagi dalam 1-2 menit ya 🙏"
 
 
 @app.route("/webhook", methods=["POST"])
@@ -523,16 +506,15 @@ def webhook():
     pesan_masuk = data.get("message", "")
 
     if not nomor_pengirim or not pesan_masuk:
-        return jsonify({"status": "ignored", "reason": "empty"}), 200
+        return jsonify({"status": "ignored"}), 200
 
     if "@g.us" in nomor_pengirim:
-        return jsonify({"status": "ignored", "reason": "group"}), 200
+        return jsonify({"status": "ignored"}), 200
 
     catat_customer(nomor_pengirim)
 
     tipe_pesan = data.get("type", "text")
 
-    # Handle foto/media — cek apakah peserta garansi
     if tipe_pesan != "text":
         garansi = get_garansi_status(nomor_pengirim)
         if garansi and garansi["status"] == "active":
@@ -541,42 +523,39 @@ def webhook():
                 kirim_wa(nomor_pengirim, f"Ok terima kasih Kak, foto ke-{jumlah} hari ini diterima! 👍")
             else:
                 kirim_wa(nomor_pengirim, "Ok terima kasih Kak, foto diterima! 👍")
-            return jsonify({"status": "replied", "type": "garansi-checkin"}), 200
+            return jsonify({"status": "garansi-checkin"}), 200
         else:
             kirim_wa(nomor_pengirim,
                      "Saya memiliki keterbatasan untuk membaca/mengirim file, "
                      "baik gambar maupun dokumen. Boleh diketik aja ya Kak pertanyaannya 😊")
-            return jsonify({"status": "replied", "type": "non-text"}), 200
+            return jsonify({"status": "non-text"}), 200
 
-    print(f"[INFO] Dari: {nomor_pengirim}")
-    print(f"[INFO] Pesan: {pesan_masuk}")
+    print(f"[INFO] Dari: {nomor_pengirim} | Pesan: {pesan_masuk}")
 
-    # Deteksi pendaftaran garansi (customer kirim nama setelah bilang mau)
     pesan_lower = pesan_masuk.lower().strip()
-    if any(keyword in pesan_lower for keyword in ["daftar garansi", "ikut program", "nama saya", "nama lengkap saya", "nama:"]):
-        # Coba ekstrak nama dari pesan
+    if any(kw in pesan_lower for kw in ["daftar garansi", "ikut program", "nama saya", "nama lengkap saya", "nama:"]):
         nama = pesan_masuk.strip()
         for prefix in ["nama saya ", "nama lengkap saya ", "nama: ", "daftar garansi ", "nama saya: "]:
             if pesan_lower.startswith(prefix):
                 nama = pesan_masuk[len(prefix):].strip()
                 break
-        if len(nama) > 2 and len(nama) < 100:
+        if 2 < len(nama) < 100:
             daftar_garansi(nomor_pengirim, nama)
-            tanggal_mulai = (datetime.now() + timedelta(days=1)).strftime("%d %B %Y")
+            mulai = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
             kirim_wa(nomor_pengirim,
                      f"Terima kasih Kak {nama}! 🎉\n\n"
                      f"Pendaftaran Program 30 Hari Pasti Langsing sudah dicatat!\n\n"
-                     f"Program kakak dimulai BESOK ({tanggal_mulai}) ya.\n\n"
+                     f"Program dimulai BESOK ({mulai}).\n\n"
                      f"Mulai besok, kirim 4 foto setiap hari:\n"
                      f"1. Foto sarapan pagi\n"
                      f"2. Foto makan siang\n"
                      f"3. Foto makan malam\n"
                      f"4. Foto sachet Lelixir yang sudah dibuka\n\n"
-                     f"30 hari dari sekarang, kakak pasti lihat hasilnya! Semangat! 💪")
-            return jsonify({"status": "replied", "type": "garansi-daftar"}), 200
+                     f"Ingat: 30 hari tanpa putus ya Kak! Semangat, 30 hari dari sekarang kakak pasti lihat hasilnya! 💪")
+            return jsonify({"status": "garansi-daftar"}), 200
 
     jawaban = tanya_claude(nomor_pengirim, pesan_masuk)
-    print(f"[INFO] Jawaban AI: {jawaban[:100]}...")
+    print(f"[INFO] Jawaban: {jawaban[:100]}...")
 
     kirim_wa(nomor_pengirim, jawaban)
     return jsonify({"status": "replied"}), 200
@@ -586,34 +565,30 @@ def webhook():
 def home():
     return jsonify({
         "status": "active",
-        "app": "Lelixir AI Agent v2.4",
-        "features": "auto-reply + follow-up + garansi 30 hari",
+        "app": "Lelixir AI Agent v2.5",
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }), 200
-
 
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "healthy"}), 200
-
 
 @app.route("/garansi-status/<nomor>", methods=["GET"])
 def cek_garansi(nomor):
     garansi = get_garansi_status(nomor)
     if garansi:
         return jsonify(garansi), 200
-    return jsonify({"error": "Customer tidak terdaftar program garansi"}), 404
+    return jsonify({"error": "Tidak terdaftar"}), 404
 
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("LELIXIR AI AGENT v2.4 — SERVER STARTED")
+    print("LELIXIR AI AGENT v2.5 — SERVER STARTED")
     print("=" * 50)
     print(f"Model: claude-sonnet-4-6")
     print(f"Claude API: {'OK' if ANTHROPIC_API_KEY else 'NOT SET!'}")
     print(f"Fonnte API: {'OK' if FONNTE_API_KEY else 'NOT SET!'}")
-    print(f"Follow-up: Day 3 & Day 10 ACTIVE")
-    print(f"Garansi 30 Hari: ACTIVE")
+    print(f"Follow-up: Day 3, 10, Garansi-30 ACTIVE")
     print("=" * 50)
 
     scheduler_thread = threading.Thread(target=jalankan_followup, daemon=True)
