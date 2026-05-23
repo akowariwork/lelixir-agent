@@ -1,11 +1,12 @@
 """
 ===========================================================
-LELIXIR AI AGENT v2.5 (Updated)
+LELIXIR AI AGENT v2.6
 ===========================================================
-- Garansi 30 Hari + follow-up hari ke-30 + claim flow
+- Dashboard endpoint /dashboard
+- H+1 follow-up untuk first-time chatter
+- Garansi 30 Hari + follow-up hari ke-30
 - Auto follow-up hari ke-3 dan ke-10
-- Auto-retry 3x untuk overloaded
-- Updated meal plan rules
+- Auto-retry 3x
 - Model: claude-sonnet-4-6
 ===========================================================
 """
@@ -24,21 +25,37 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 FONNTE_API_KEY = os.environ.get("FONNTE_API_KEY", "")
 ADMIN_WA_NUMBER = os.environ.get("ADMIN_WA_NUMBER", "628xxxxxxxxxx")
 
+# =====================================================
+# FOLLOW-UP MESSAGES
+# =====================================================
+
+FOLLOWUP_H1_GREETING = [
+    "Hai Kak! Kemarin sempat chat ya, terima kasih sudah mampir 😊\n\nOh iya, perkenalkan — saya Health Assistant Lelixir. Saya bisa bantu kakak untuk:\n\n- Konsultasi cara pakai Lelixir supaya hasilnya maksimal\n- Buatkan meal plan harian yang enak dan gampang diikuti\n- Kasih rekomendasi olahraga ringan yang do-able\n- Jawab pertanyaan soal nutrisi, diet, atau kesehatan pencernaan\n\nJangan sungkan nanya apapun ya Kak — mau soal Lelixir atau soal pola makan sehat secara umum. Saya di sini 24 jam siap bantu kakak langsing dengan cara yang aman dan nyaman! 💪",
+
+    "Halo Kak! Salam kenal, saya Health Assistant Lelixir 😊\n\nKemarin kakak sempat chat, tapi mungkin belum sempat nanya lebih lanjut. Nggak apa-apa Kak, santai aja!\n\nKalau kakak butuh bantuan, saya bisa:\n- Bantu kakak memaksimalkan hasil Lelixir\n- Buatkan meal plan yang sesuai target kakak\n- Kasih tips olahraga ringan yang simpel\n- Jawab soal nutrisi, intermittent fasting, atau apapun soal kesehatan\n\nAnggap aja saya teman yang kebetulan paham gizi. Tanya apa aja ya Kak, saya senang banget kalau bisa bantu! ✨",
+
+    "Hi Kak! Kemarin sempat mampir chat ya 😊\n\nSaya Health Assistant Lelixir — asisten gizi pribadi kakak yang standby 24 jam. Kalau kakak lagi cari cara langsing yang cepat, aman, dan nyaman — saya bisa bantu banget!\n\nMisalnya:\n- Mau tau cara pakai Lelixir yang paling efektif\n- Mau dibuatkan meal plan harian (termasuk kalau kakak lagi IF)\n- Mau tau olahraga apa yang paling gampang tapi hasilnya kelihatan\n- Atau cuma mau nanya soal nutrisi secara umum\n\nSemua boleh Kak, jangan sungkan! Chat aja kapan pun 🙌"
+]
+
 FOLLOWUP_HARI_3 = [
-    "Hai Kak! Gimana, udah sempat coba Lelixir nya? Di awal-awal biasanya BAB akan terasa lebih sering dan lebih banyak dari biasanya — itu pertanda bagus lho Kak! Artinya proses detoksifikasi usus mulai bekerja. Endapan kotoran yang selama ini menumpuk mulai dikeluarkan. Tetap semangat ya, ini langkah awal yang bagus banget buat tubuh kakak! 💪",
-    "Halo Kak! Udah mulai rutin minum Lelixir nya? Kalau di hari-hari pertama kakak merasa BAB jadi lebih sering, tenang aja ya — itu justru tanda positif! Usus kakak sedang dibersihkan dari endapan sisa pencernaan yang mungkin sudah bertahun-tahun menumpuk. Lanjutkan terus ya! 🙌",
-    "Hi Kak! Checking in nih, sudah 3 hari sejak terakhir chat. Semoga Lelixir nya sudah dicoba ya! Coba rutin 2 minggu ya Kak, biasanya di situ hasilnya mulai kelihatan — badan lebih segar, kulit lebih cerah, dan perut mulai menyusut! Semangat hidup sehat!"
+    "Hai Kak! Gimana, udah sempat coba Lelixir nya? Di awal-awal biasanya BAB akan terasa lebih sering dan lebih banyak dari biasanya — itu pertanda bagus lho Kak! Artinya proses detoksifikasi usus mulai bekerja. Tetap semangat ya! 💪",
+    "Halo Kak! Udah mulai rutin minum Lelixir nya? Kalau di hari-hari pertama kakak merasa BAB jadi lebih sering, tenang aja ya — itu tanda positif! Usus kakak sedang dibersihkan. Lanjutkan terus ya! 🙌",
+    "Hi Kak! Checking in nih, sudah 3 hari. Semoga Lelixir nya sudah dicoba ya! Coba rutin 2 minggu ya Kak, hasilnya mulai kelihatan — badan lebih segar, kulit lebih cerah, perut mulai menyusut! Semangat hidup sehat!"
 ]
 
 FOLLOWUP_HARI_10 = [
-    "Hai Kak! Gimana progress nya setelah rutin minum Lelixir? Kalau stock nya mulai menipis, bisa langsung re-stock biar programnya nggak putus. Banyak customer kita yang lingkar perutnya susut sampai 5-8 cm dalam 30 hari! Cek aja di toko terdekat Kak, sering ada promo flash sale dan free produk!",
-    "Halo Kak! Kalau kakak rutin konsumsi Lelixir nya, pasti stock nya udah mulai menipis ya? Dari pengalaman banyak customer, hasil terbaik itu di 30 hari pemakaian rutin — ada yang perutnya susut sampai 8 cm! Cek Shopee Mall OWL ya Kak, sering ada promo flash sale! 💪",
-    "Hi Kak! Semoga Lelixir nya sudah terasa manfaatnya ya. Kalau stock nya udah mau habis, jangan sampai putus ya Kak — konsistensi itu kuncinya. Cek marketplace terdekat Kak, sering ada promo flash sale dan bonus produk! Tetap semangat hidup sehat!"
+    "Hai Kak! Gimana progress nya? Kalau stock nya mulai menipis, bisa re-stock biar programnya nggak putus. Banyak customer kita lingkar perutnya susut 5-8 cm dalam 30 hari! Cek toko terdekat Kak, sering ada promo flash sale dan free produk!",
+    "Halo Kak! Kalau rutin konsumsi, stock nya pasti udah menipis ya? Hasil terbaik itu di 30 hari pemakaian rutin — ada yang perutnya susut 8 cm! Cek Shopee Mall OWL Kak, sering ada promo flash sale! 💪",
+    "Hi Kak! Semoga Lelixir nya sudah terasa manfaatnya. Kalau stock mau habis, jangan putus ya — konsistensi kuncinya. Cek marketplace terdekat, sering ada flash sale dan bonus produk! Semangat!"
 ]
 
 FOLLOWUP_GARANSI_30 = [
-    "Hai Kak {nama}! 🎉\n\nNggak kerasa ya, udah 30 hari sejak kakak daftar Program Pasti Langsing! Selamat udah konsisten selama sebulan penuh! 💪\n\nGimana Kak, udah turun berapa kg dan berapa cm lingkar perutnya?\n\nTolong kirim:\n1. Foto timbangan terbaru\n2. Foto ukur lingkar perut terbaru\n\nFoto dan progress kakak akan di-review oleh admin ya.\n\nDan yang paling penting — apakah kakak merasa ada progress? Cerita dong!"
+    "Hai Kak {nama}! 🎉\n\nUdah 30 hari sejak kakak daftar Program Pasti Langsing! Selamat udah konsisten! 💪\n\nGimana Kak, udah turun berapa kg dan berapa cm lingkar perutnya?\n\nTolong kirim:\n1. Foto timbangan terbaru\n2. Foto ukur lingkar perut terbaru\n\nFoto dan progress kakak akan di-review oleh admin ya.\n\nApakah kakak merasa ada progress? Cerita dong!"
 ]
+
+# =====================================================
+# DATABASE
+# =====================================================
 
 DB_PATH = "lelixir_customers.db"
 
@@ -50,6 +67,8 @@ def init_db():
             nomor TEXT PRIMARY KEY,
             first_chat TEXT,
             last_chat TEXT,
+            chat_count INTEGER DEFAULT 0,
+            followup_h1_sent INTEGER DEFAULT 0,
             followup_3_sent INTEGER DEFAULT 0,
             followup_10_sent INTEGER DEFAULT 0
         )
@@ -83,11 +102,17 @@ def catat_customer(nomor):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.now().isoformat()
-    c.execute("""
-        INSERT INTO customers (nomor, first_chat, last_chat, followup_3_sent, followup_10_sent)
-        VALUES (?, ?, ?, 0, 0)
-        ON CONFLICT(nomor) DO UPDATE SET last_chat = ?
-    """, (nomor, now, now, now))
+    c.execute("SELECT chat_count FROM customers WHERE nomor = ?", (nomor,))
+    row = c.fetchone()
+    if row:
+        new_count = row[0] + 1
+        c.execute("UPDATE customers SET last_chat = ?, chat_count = ? WHERE nomor = ?",
+                  (now, new_count, nomor))
+    else:
+        c.execute("""
+            INSERT INTO customers (nomor, first_chat, last_chat, chat_count, followup_h1_sent, followup_3_sent, followup_10_sent)
+            VALUES (?, ?, ?, 1, 0, 0, 0)
+        """, (nomor, now, now))
     conn.commit()
     conn.close()
 
@@ -101,6 +126,20 @@ def get_customers_for_followup(hari, followup_field):
         AND date(first_chat) >= ?
         AND {followup_field} = 0
     """, (target_date, (datetime.now() - timedelta(days=hari+1)).isoformat()[:10]))
+    results = [row[0] for row in c.fetchall()]
+    conn.close()
+    return results
+
+def get_customers_for_h1_followup():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()[:10]
+    c.execute("""
+        SELECT nomor FROM customers
+        WHERE date(first_chat) = ?
+        AND chat_count <= 2
+        AND followup_h1_sent = 0
+    """, (yesterday,))
     results = [row[0] for row in c.fetchall()]
     conn.close()
     return results
@@ -195,6 +234,10 @@ def catat_checkin(nomor):
     conn.close()
     return new_count
 
+# =====================================================
+# FONNTE
+# =====================================================
+
 def kirim_wa(nomor_tujuan, pesan):
     try:
         response = requests.post(
@@ -213,32 +256,55 @@ def kirim_wa(nomor_tujuan, pesan):
         print(f"[ERROR] Gagal kirim WA: {str(e)}")
         return False
 
+# =====================================================
+# SCHEDULER
+# =====================================================
+
 def jalankan_followup():
     while True:
         try:
             now = datetime.now()
             if 9 <= now.hour <= 20:
                 print(f"[SCHEDULER] Cek follow-up... {now.strftime('%H:%M')}")
+
+                # H+1: customer yang cuma chat 1-2 kali kemarin
+                customers_h1 = get_customers_for_h1_followup()
+                for nomor in customers_h1:
+                    kirim_wa(nomor, random.choice(FOLLOWUP_H1_GREETING))
+                    tandai_followup(nomor, "followup_h1_sent")
+                    print(f"[FOLLOWUP-H1] Terkirim ke {nomor}")
+                    time.sleep(2)
+
+                # Hari ke-3
                 customers_3 = get_customers_for_followup(3, "followup_3_sent")
                 for nomor in customers_3:
                     kirim_wa(nomor, random.choice(FOLLOWUP_HARI_3))
                     tandai_followup(nomor, "followup_3_sent")
                     time.sleep(2)
+
+                # Hari ke-10
                 customers_10 = get_customers_for_followup(10, "followup_10_sent")
                 for nomor in customers_10:
                     kirim_wa(nomor, random.choice(FOLLOWUP_HARI_10))
                     tandai_followup(nomor, "followup_10_sent")
                     time.sleep(2)
+
+                # Garansi hari ke-30
                 garansi_30 = get_garansi_for_followup_30()
                 for nomor, nama in garansi_30:
                     kirim_wa(nomor, FOLLOWUP_GARANSI_30[0].replace("{nama}", nama))
                     tandai_garansi_followup_30(nomor)
                     time.sleep(2)
+
         except Exception as e:
             print(f"[SCHEDULER ERROR] {str(e)}")
         time.sleep(3600)
 
-SYSTEM_PROMPT = """# SYSTEM PROMPT FINAL — AI AGENT LELIXIR v2.5
+# =====================================================
+# SYSTEM PROMPT
+# =====================================================
+
+SYSTEM_PROMPT = """# SYSTEM PROMPT FINAL — AI AGENT LELIXIR v2.6
 
 ## IDENTITAS UTAMA
 
@@ -276,24 +342,14 @@ Usus simpan endapan 2-10 kg. Awal konsumsi: warna kehitaman, bau menyengat — N
 2. Kalau customer tanya garansi/jaminan — langsung jelaskan.
 
 ### Penjelasan Program:
-Program 30 Hari Pasti Langsing, GARANSI UANG KEMBALI.
-Syarat:
-1. Beli 3 Box Lelixir (30 sachet)
-2. Kirim foto stock 3 box + resi Shopee
-3. Nama lengkap
-4. Foto timbangan BB + ukur lingkar perut saat ini (cm)
-5. Mulai besok, setiap hari 30 hari kirim 4 foto: sarapan, makan siang, makan malam, sachet Lelixir dibuka
-6. Tidak boleh putus 1 hari pun
-7. Setelah 30 hari kirim foto timbangan + lingkar perut terbaru
-Kalau BB tidak turun 1 kg ATAU lingkar perut tidak susut 1 cm, uang 3 box kembali 100%.
-Gugur jika ada 1 hari tidak kirim foto lengkap.
+Syarat: Beli 3 Box, kirim foto stock + resi Shopee, nama lengkap, foto timbangan BB + lingkar perut cm. Mulai besok, 30 hari kirim 4 foto/hari (sarapan, siang, malam, sachet Lelixir). Tidak boleh putus. Setelah 30 hari kirim foto timbangan + lingkar perut. BB tidak turun 1 kg ATAU lingkar perut tidak susut 1 cm = uang kembali 100%. Gugur jika 1 hari tidak kirim.
 
 ### Kalau MAU: minta foto stock + resi + nama + foto BB + lingkar perut.
-### Kalau kirim nama: konfirmasi, program mulai besok, ingatkan 4 foto/hari.
+### Kalau kirim nama: konfirmasi, mulai besok, 4 foto/hari.
 ### Kalau kirim foto: "Ok terima kasih Kak, foto diterima!"
-### Setelah 30 hari: tanya progress, foto akan di-review admin.
-### Kalau mau claim: "Foto kakak sehari 4x selama 30 hari akan dianalisa oleh Admin ya. Kalau semua syarat terpenuhi, dalam 4 hari ke depan admin akan chat kakak perihal pengembalian uang." Lalu eskalasi.
-### Kalau puas: apresiasi + soft sell re-stock.
+### Setelah 30 hari: tanya progress, review admin.
+### Claim: "Foto 4x/hari 30 hari akan dianalisa Admin. Kalau terpenuhi, 4 hari admin akan chat perihal pengembalian." Lalu eskalasi.
+### Puas: apresiasi + soft sell re-stock.
 
 ---
 
@@ -323,8 +379,8 @@ YOGYAKARTA / JATENG: 242you https://s.shopee.co.id/6Ai1e2oWVx
 JANGAN jelek-jelekkan. "Lelixir Double Action — satu-satunya fokus lingkar perut dengan Metabolism Booster + Detox Usus sekaligus."
 Vs obat diet: "Lelixir bukan obat, cara kerjanya lebih aman dan holistik secara alami."
 
-## REBOUND: "Lelixir perbaiki DASAR (pencernaan + metabolisme), bukan penekan nafsu makan, jadi lebih sustainable."
-## KETERGANTUNGAN: "Bahan alami, sama kayak buah naga untuk BAB. Setelah 1-2 bulan rutin, bisa minum occasionally."
+## REBOUND: "Perbaiki DASAR (pencernaan + metabolisme), bukan penekan nafsu makan, lebih sustainable."
+## KETERGANTUNGAN: "Bahan alami, sama kayak buah naga. Setelah 1-2 bulan rutin, bisa minum occasionally."
 
 ## LEGALITAS
 BPOM: 272882011400050 (https://cekbpom.pom.go.id)
@@ -355,12 +411,10 @@ Setelah makan siang/malam, 15-30 menit setelah makan. Jangan perut kosong.
 ## KONDISI KHUSUS
 Hamil/Menyusui: TIDAK DISARANKAN. Maag: AMAN setelah makan. Hipertensi monitor. Diabetes aman.
 
-## ILMU NUTRISI — PRINSIP UTAMA
+## ILMU NUTRISI
 
-1. HINDARI GULA — INI PALING PENTING. Gula naikan insulin, stop pembakaran lemak. Lelixir pakai Stevia 0 kalori.
-
-2. JEDA ANTAR MAKAN HARUS NOL KALORI — ini kunci metabolisme maksimal. Di antara makan pagi-siang-malam, JANGAN konsumsi apapun yang mengandung kalori. Hanya boleh: air putih, teh tawar, kopi hitam tanpa gula. Kenapa? Karena setiap kali ada kalori masuk (bahkan sedikit), insulin naik lagi dan proses pembakaran lemak BERHENTI. Jadi jeda makan = puasa mini. Ini prinsip yang sama dengan Intermittent Fasting.
-
+1. HINDARI GULA — PALING PENTING. Gula naikan insulin, stop pembakaran lemak.
+2. JEDA ANTAR MAKAN NOL KALORI — hanya air putih, teh tawar, kopi tanpa gula. Setiap kalori masuk = insulin naik = pembakaran lemak berhenti. Jeda makan = puasa mini.
 3. KURANGI KARBO OLAHAN — piring: 1/2 sayur + 1/4 protein + 1/4 karbo.
 4. SERAT KUNCI — prebiotik, perlambat gula, bikin kenyang.
 5. PROTEIN CUKUP — telur, tahu, tempe, ayam, ikan.
@@ -369,105 +423,60 @@ Hamil/Menyusui: TIDAK DISARANKAN. Maag: AMAN setelah makan. Hipertensi monitor. 
 
 Referensi internal (JANGAN sebut): GGL.
 
-## ATURAN MEAL PLAN — SANGAT PENTING
+## ATURAN MEAL PLAN
 
 ### JANGAN PERNAH:
-- Jangan sebut atau rekomendasikan brand lain (Hotto, Flim Meal, Spencer Mealblend, WRP, Herbalife, atau apapun). FOKUS hanya pola makan biasa + Lelixir.
-- Jangan bilang "ayam rebus" — terkesan tidak enak dan nggak sustainable.
-- Jangan bikin meal plan yang menyiksa atau terlalu ketat — harus enjoyable dan bisa jadi lifestyle.
+- Jangan sebut brand lain (Hotto, Flim Meal, Mealblend, WRP, Herbalife, dll)
+- Jangan bilang "ayam rebus" — terkesan tidak enak
+- Jangan rekomendasikan snack berkalori di jeda makan
 
 ### HARUS:
-- Jadwal Lelixir SELALU di AWAL meal plan, sebelum breakdown makanan.
-- Bahasa makanan harus APPEALING dan REALISTIS:
-  - Ayam: "Ayam goreng (boleh goreng biasa, asal jangan goreng bertepung/kremes)"
-  - Telur: "Telur goreng, scramble, atau omelette — protein terbaik dan praktis!"
-  - Ikan: "Ikan bakar, goreng, atau pepes"
-  - Sayur: "Tumis sayur, capcay, atau gado-gado tanpa lontong"
-  - Tempe/tahu: "Tempe goreng, tahu goreng — boleh banget!"
-- INTINYA: makanan yang enak, real, dan bisa dijadikan kebiasaan sehari-hari. Bukan diet menyiksa.
+- Jadwal Lelixir SELALU di AWAL
+- Bahasa makanan APPEALING: ayam goreng (tanpa tepung), telur goreng/scramble/omelette, ikan bakar/goreng/pepes, tempe goreng, tahu goreng — semua boleh!
+- Makanan harus enak, real, bisa jadi lifestyle — bukan diet menyiksa
 
-### JEDA ANTAR MAKAN:
-- Di antara sarapan dan makan siang: NOL KALORI (hanya air putih, teh tawar, kopi tanpa gula)
-- Di antara makan siang dan makan malam: NOL KALORI
-- Setelah makan malam: STOP makan, hanya air putih
-- Jangan rekomendasikan snack berkalori di antara waktu makan. Kalau customer bilang lapar di jeda makan, sarankan: air putih banyak, teh tawar, atau kopi hitam tanpa gula. Jelaskan bahwa jeda nol kalori ini penting supaya insulin turun dan metabolisme pembakaran lemak jalan terus.
-- PENGECUALIAN: kalau customer benar-benar tidak kuat, boleh buah rendah gula (apel, pir) dalam porsi kecil. Tapi tekankan bahwa idealnya jeda nol kalori.
-
-### TEMPLATE MEAL PLAN:
+### TEMPLATE:
 
 JADWAL LELIXIR:
-- Target 1-6 kg: 1 sachet Lelixir setelah makan siang
-- Target 7 kg+: 1 sachet Lelixir setelah makan siang + 1 sachet setelah makan malam
+- Target 1-6 kg: 1 sachet setelah makan siang
+- Target 7 kg+: 1 sachet setelah makan siang + 1 sachet setelah makan malam
 
-SARAPAN (jam 7-8):
-- Telur 2 butir (goreng, scramble, omelette — pilih yang kakak suka!)
-- Sayur 1 porsi (tumis kangkung, bayam, brokoli)
-- Karbo: 1/2 porsi nasi ATAU 1 lembar roti
-- Minum: air putih / teh tawar tanpa gula
+SARAPAN (7-8): Telur 2 butir (goreng/scramble/omelette) + sayur + 1/2 porsi nasi atau roti
+JEDA: NOL KALORI (air putih, teh tawar, kopi tanpa gula saja)
+MAKAN SIANG (12-13): Protein (ayam goreng tanpa tepung / ikan / tempe tahu) + sayur 2 jenis + 1/2 nasi -> MINUM LELIXIR
+JEDA: NOL KALORI
+MAKAN MALAM (18-19): Protein + sayur banyak + karbo minimal/skip -> MINUM LELIXIR (kalau 2 sachet/hari)
+SETELAH MALAM: Jalan kaki 15-30 menit. STOP makan.
 
-JEDA PAGI-SIANG: NOL KALORI — hanya air putih, teh tawar, kopi hitam tanpa gula
-
-MAKAN SIANG (jam 12-13):
-- Protein: ayam goreng (tanpa tepung), ikan bakar/goreng, tempe/tahu goreng — pilih yang kakak suka
-- Sayur: 2 jenis (makin banyak warna makin bagus)
-- Karbo: 1/2 porsi nasi (kurangi bertahap)
-- Setelah makan siang: MINUM LELIXIR
-
-JEDA SIANG-MALAM: NOL KALORI — hanya air putih, teh tawar, kopi hitam tanpa gula
-
-MAKAN MALAM (jam 18-19, sebelum jam 19):
-- Protein: telur / ikan / ayam tanpa kulit
-- Sayur: porsi banyak
-- Karbo: kurangi drastis atau skip nasi
-- Setelah makan malam: MINUM LELIXIR (kalau program 2 sachet/hari)
-
-SETELAH MAKAN MALAM:
-- Jalan kaki santai 15-30 menit (kalau bisa)
-- STOP makan dan minum berkalori
-
-### KUNCI SUKSES MEAL PLAN:
-- Yang paling penting: MINUM LELIXIR setiap hari
-- Hindari GULA dalam bentuk apapun (minuman manis, kecap, saos, snack)
-- Jeda makan NOL KALORI (biar insulin turun, metabolisme jalan)
-- Nikmati makanannya — ini bukan diet menyiksa tapi perubahan gaya hidup
-- Konsistensi > kesempurnaan. Mending 80% benar tiap hari daripada 100% benar cuma 3 hari terus nyerah.
+KUNCI: Minum Lelixir, hindari gula, jeda nol kalori, nikmati makanannya, konsistensi > kesempurnaan.
 
 ## OLAHRAGA
-Level 1: Jalan kaki cepat 15-30 menit setelah makan.
-Level 2: Cardio ringan + resistance ringan, 3-4x/minggu.
+Level 1: Jalan kaki 15-30 menit setelah makan.
+Level 2: Cardio + resistance ringan, 3-4x/minggu.
 Level 3: HIIT 15-20 menit + resistance, 3-5x/minggu.
 Level 4: HIIT + Resistance + HYROX-style, 4-5x/minggu.
 KONSISTENSI > intensitas.
 
 ## FAQ
-1. Kafein: tidak tambahan, Guarana & Green Tea efek ringan.
-2. Gula: 2g sangat kecil, pemanis Stevia.
-3. Sebelum makan: aman tapi lebih baik setelah makan.
-4. Mengenyangkan: serat prebiotik memberi food satiety.
-5. Mules: ringan normal (detox), lebih lembut dari produk lain.
-6. Berapa lama: 3-7 hari perut ringan, lingkar perut minggu ke-2 sampai ke-4.
-7. Berapa kali: 1 sachet standar, 2 sachet intensif.
-8. Maag: aman, HARUS setelah makan.
-9. Hamil: tidak disarankan.
-10. Menyusui: tidak disarankan.
-11. Kecilkan perut: ya, double action.
-12. Sertifikat: BPOM MD, HALAL, HACCP.
-13. Rebound: perbaiki dasar, bukan penekan nafsu makan, lebih sustainable.
-14. Ketergantungan: bahan alami, bisa stop setelah 1-2 bulan, minum occasionally.
+1-14 (kafein, gula, cara konsumsi, maag, hamil, menyusui, kecilkan perut, sertifikat, rebound, ketergantungan).
 
 ## YANG TIDAK BOLEH
 - Jangan klaim menyembuhkan penyakit
 - Jangan klaim aman hamil/menyusui
 - Jangan janji hasil pasti
 - Jangan jelek-jelekkan kompetitor
-- Jangan sebut/rekomendasikan brand lain dalam meal plan (Hotto, Flim Meal, Mealblend, WRP, Herbalife, dll)
-- Jangan bilang "ayam rebus" atau makanan yang terkesan tidak enak
-- Jangan rekomendasikan snack berkalori di jeda makan (kecuali customer benar-benar tidak kuat)
+- Jangan sebut brand lain di meal plan
+- Jangan bilang ayam rebus
+- Jangan snack berkalori di jeda makan
 - Jangan di luar topik
 - Jangan terlalu panjang
 - Jangan sebut GGL
 - Jangan jualan di chat pertama
 - JANGAN bilang AI/bot"""
+
+# =====================================================
+# SERVER
+# =====================================================
 
 app = Flask(__name__)
 riwayat_chat = {}
@@ -590,7 +599,7 @@ def webhook():
                      f"2. Foto makan siang\n"
                      f"3. Foto makan malam\n"
                      f"4. Foto sachet Lelixir yang sudah dibuka\n\n"
-                     f"Ingat: 30 hari tanpa putus ya Kak! Semangat! 💪")
+                     f"30 hari tanpa putus ya Kak! Semangat! 💪")
             return jsonify({"status": "garansi-daftar"}), 200
 
     jawaban = tanya_claude(nomor_pengirim, pesan_masuk)
@@ -600,17 +609,26 @@ def webhook():
     return jsonify({"status": "replied"}), 200
 
 
-@app.route("/", methods=["GET"])
-def home():
+# =====================================================
+# DASHBOARD & STATUS
+# =====================================================
+
+@app.route("/dashboard", methods=["GET"])
+def dashboard():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT nomor, first_chat, last_chat, chat_count FROM customers ORDER BY last_chat DESC")
+    customers = [{"nomor": r[0], "first_chat": r[1][:16], "last_chat": r[2][:16], "total_chat": r[3]} for r in c.fetchall()]
+    c.execute("SELECT nomor, nama, tanggal_mulai, status, total_checkin, streak FROM garansi ORDER BY tanggal_mulai DESC")
+    garansi = [{"nomor": r[0], "nama": r[1], "mulai": r[2][:10], "status": r[3], "checkin": r[4], "streak": r[5]} for r in c.fetchall()]
+    conn.close()
     return jsonify({
-        "status": "active",
-        "app": "Lelixir AI Agent v2.5",
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "total_customers": len(customers),
+        "customers": customers,
+        "total_garansi": len(garansi),
+        "garansi": garansi
     }), 200
 
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "healthy"}), 200
 
 @app.route("/garansi-status/<nomor>", methods=["GET"])
 def cek_garansi(nomor):
@@ -620,14 +638,32 @@ def cek_garansi(nomor):
     return jsonify({"error": "Tidak terdaftar"}), 404
 
 
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "status": "active",
+        "app": "Lelixir AI Agent v2.6",
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }), 200
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "healthy"}), 200
+
+
+# =====================================================
+# START
+# =====================================================
+
 if __name__ == "__main__":
     print("=" * 50)
-    print("LELIXIR AI AGENT v2.5 — SERVER STARTED")
+    print("LELIXIR AI AGENT v2.6 — SERVER STARTED")
     print("=" * 50)
     print(f"Model: claude-sonnet-4-6")
     print(f"Claude API: {'OK' if ANTHROPIC_API_KEY else 'NOT SET!'}")
     print(f"Fonnte API: {'OK' if FONNTE_API_KEY else 'NOT SET!'}")
-    print(f"Follow-up: Day 3, 10, Garansi-30 ACTIVE")
+    print(f"Follow-up: H+1, Day 3, Day 10, Garansi-30")
+    print(f"Dashboard: /dashboard")
     print("=" * 50)
 
     scheduler_thread = threading.Thread(target=jalankan_followup, daemon=True)
