@@ -1,14 +1,12 @@
 """
 ===========================================================
-LELIXIR AI AGENT v2.8
+LELIXIR AI AGENT v2.9 (FIXED)
 ===========================================================
-- Garansi updated: 3kg / 3cm
-- ED policy: tukar dari distributor resmi
-- Halal link updated: bpjph.halal.go.id
-- Bukti BPOM & Halal via Google Drive
-- Surabaya Pusat (OWL Mall)
-- Dashboard HTML, Follow-up H+1/D3/D10/G30
+- FIXED: Scheduler now runs under gunicorn (not just __main__)
+- Natural garansi registration (AI-driven)
+- Follow-up: H+1, D3, D10, G30
 - Auto-retry 3x
+- HTML Dashboard
 - Model: claude-sonnet-4-6
 ===========================================================
 """
@@ -18,6 +16,7 @@ import requests
 import os
 import json
 import random
+import re
 import sqlite3
 import threading
 import time
@@ -30,19 +29,19 @@ ADMIN_WA_NUMBER = os.environ.get("ADMIN_WA_NUMBER", "628xxxxxxxxxx")
 FOLLOWUP_H1_GREETING = [
     "Hai Kak! Kemarin sempat chat ya, makasih sudah mampir 😊\n\nPerkenalkan, saya Health Assistant Lelixir — asisten gizi pribadi kakak yang siap bantu 24 jam.\n\nKakak bisa nanya apa aja ke saya lho, misalnya:\n✅ Cara pakai Lelixir supaya hasilnya maksimal\n✅ Buatkan meal plan harian yang enak dan gampang\n✅ Tips olahraga ringan yang cocok buat kakak\n✅ Soal nutrisi, diet, atau intermittent fasting\n\nJangan sungkan ya Kak — saya senang banget kalau bisa bantu kakak langsing dengan cara yang cepat, aman, dan nyaman! 💪",
     "Halo Kak! Salam kenal, saya Health Assistant Lelixir 😊\n\nKemarin kakak sempat chat tapi mungkin belum sempat tanya lebih lanjut — santai aja Kak!\n\nSaya bisa bantu banyak hal lho:\n✅ Konsultasi cara memaksimalkan Lelixir\n✅ Buatkan meal plan yang disesuaikan target kakak\n✅ Kasih tips diet & olahraga yang simpel dan do-able\n✅ Jawab soal nutrisi, IF, atau kesehatan pencernaan\n\nAnggap aja saya teman yang paham gizi — tanya apapun, kapan aja! Saya siap bantu kakak dapat hasil terbaik ✨",
-    "Hi Kak! Kemarin sempat mampir chat ya 😊\n\nSaya Health Assistant Lelixir — asisten gizi kakak yang standby 24 jam. Kalau kakak lagi cari cara langsing yang cepat, aman, dan nyaman — saya bisa bantu banget!\n\nMisalnya:\n✅ Cara pakai Lelixir yang paling efektif\n✅ Dibuatkan meal plan harian (termasuk kalau lagi IF)\n✅ Olahraga apa yang paling gampang tapi hasilnya kelihatan\n✅ Nanya soal nutrisi atau kesehatan secara umum\n\nSemua boleh Kak, jangan sungkan! Chat aja kapan pun, saya dengan senang hati bantu 🙌"
+    "Hi Kak! Kemarin sempat mampir chat ya 😊\n\nSaya Health Assistant Lelixir — asisten gizi kakak yang standby 24 jam. Kalau kakak lagi cari cara langsing yang cepat, aman, dan nyaman — saya bisa bantu banget!\n\nMisalnya:\n✅ Cara pakai Lelixir yang paling efektif\n✅ Dibuatkan meal plan harian (termasuk kalau lagi IF)\n✅ Olahraga apa yang paling gampang tapi hasilnya kelihatan\n✅ Nanya soal nutrisi atau kesehatan secara umum\n\nSemua boleh Kak, jangan sungkan! Chat aja kapan pun 🙌"
 ]
 
 FOLLOWUP_HARI_3 = [
-    "Hai Kak! Gimana, udah sempat coba Lelixir nya? Di awal-awal biasanya BAB akan terasa lebih sering dan lebih banyak — itu pertanda bagus! Proses detoksifikasi usus mulai bekerja. Tetap semangat ya! 💪",
-    "Halo Kak! Udah mulai rutin minum Lelixir nya? Kalau BAB jadi lebih sering, tenang — itu tanda positif! Usus kakak sedang dibersihkan. Lanjutkan terus ya! 🙌",
-    "Hi Kak! Checking in nih, sudah 3 hari. Semoga Lelixir nya sudah dicoba! Coba rutin 2 minggu ya Kak, hasilnya mulai kelihatan — badan segar, kulit cerah, perut menyusut! Semangat!"
+    "Hai Kak! Gimana, udah sempat coba Lelixir nya? Di awal-awal biasanya BAB lebih sering — pertanda bagus! Detoksifikasi usus mulai bekerja. Semangat ya! 💪",
+    "Halo Kak! Udah rutin minum Lelixir? Kalau BAB lebih sering, tenang — tanda positif! Usus sedang dibersihkan. Lanjutkan! 🙌",
+    "Hi Kak! Sudah 3 hari nih. Coba rutin 2 minggu ya, hasilnya mulai kelihatan — badan segar, kulit cerah, perut menyusut! Semangat!"
 ]
 
 FOLLOWUP_HARI_10 = [
-    "Hai Kak! Gimana progress nya? Kalau stock menipis, re-stock biar nggak putus. Banyak customer lingkar perutnya susut 5-8 cm dalam 30 hari! Cek toko terdekat, sering ada flash sale dan free produk!",
-    "Halo Kak! Stock nya pasti udah menipis ya? Hasil terbaik di 30 hari rutin! Cek Shopee Mall OWL Kak, sering ada promo flash sale! 💪",
-    "Hi Kak! Semoga Lelixir sudah terasa manfaatnya. Kalau stock mau habis, jangan putus — konsistensi kuncinya. Cek marketplace terdekat, sering ada flash sale! Semangat!"
+    "Hai Kak! Gimana progress? Kalau stock menipis, re-stock biar nggak putus. Banyak customer susut 5-8 cm dalam 30 hari! Cek toko terdekat, sering ada flash sale!",
+    "Halo Kak! Stock pasti menipis ya? Hasil terbaik di 30 hari rutin! Cek Shopee Mall OWL, sering ada promo! 💪",
+    "Hi Kak! Kalau stock mau habis, jangan putus — konsistensi kuncinya. Cek marketplace terdekat, sering ada flash sale! Semangat!"
 ]
 
 FOLLOWUP_GARANSI_30 = [
@@ -175,23 +174,54 @@ def kirim_wa(nomor, pesan):
     except Exception as e: print(f"[ERR] {e}"); return False
 
 def jalankan_followup():
+    """Scheduler yang cek follow-up setiap jam."""
+    print("[SCHEDULER] Thread started, checking every hour between 9-20 WIB")
     while True:
         try:
             now = datetime.now()
             if 9 <= now.hour <= 20:
-                print(f"[SCHED] {now.strftime('%Y-%m-%d %H:%M')}")
-                for n in get_customers_for_h1_followup():
-                    kirim_wa(n, random.choice(FOLLOWUP_H1_GREETING)); tandai_followup(n,"followup_h1_sent"); print(f"[H1] {n}"); time.sleep(2)
-                for n in get_customers_for_followup(3,"followup_3_sent"):
-                    kirim_wa(n, random.choice(FOLLOWUP_HARI_3)); tandai_followup(n,"followup_3_sent"); print(f"[D3] {n}"); time.sleep(2)
-                for n in get_customers_for_followup(10,"followup_10_sent"):
-                    kirim_wa(n, random.choice(FOLLOWUP_HARI_10)); tandai_followup(n,"followup_10_sent"); print(f"[D10] {n}"); time.sleep(2)
-                for n,nm in get_garansi_for_followup_30():
-                    kirim_wa(n, FOLLOWUP_GARANSI_30[0].replace("{nama}",nm)); tandai_garansi_30(n); print(f"[G30] {n}"); time.sleep(2)
-        except Exception as e: print(f"[SCHED ERR] {e}")
+                print(f"[SCHED] Running checks at {now.strftime('%Y-%m-%d %H:%M')}")
+
+                h1_list = get_customers_for_h1_followup()
+                print(f"[SCHED] H+1 candidates: {len(h1_list)}")
+                for n in h1_list:
+                    kirim_wa(n, random.choice(FOLLOWUP_H1_GREETING))
+                    tandai_followup(n, "followup_h1_sent")
+                    print(f"[H1 SENT] {n}")
+                    time.sleep(3)
+
+                d3_list = get_customers_for_followup(3, "followup_3_sent")
+                print(f"[SCHED] D3 candidates: {len(d3_list)}")
+                for n in d3_list:
+                    kirim_wa(n, random.choice(FOLLOWUP_HARI_3))
+                    tandai_followup(n, "followup_3_sent")
+                    print(f"[D3 SENT] {n}")
+                    time.sleep(3)
+
+                d10_list = get_customers_for_followup(10, "followup_10_sent")
+                print(f"[SCHED] D10 candidates: {len(d10_list)}")
+                for n in d10_list:
+                    kirim_wa(n, random.choice(FOLLOWUP_HARI_10))
+                    tandai_followup(n, "followup_10_sent")
+                    print(f"[D10 SENT] {n}")
+                    time.sleep(3)
+
+                g30_list = get_garansi_for_followup_30()
+                print(f"[SCHED] G30 candidates: {len(g30_list)}")
+                for n, nm in g30_list:
+                    kirim_wa(n, FOLLOWUP_GARANSI_30[0].replace("{nama}", nm))
+                    tandai_garansi_30(n)
+                    print(f"[G30 SENT] {n}")
+                    time.sleep(3)
+
+                print(f"[SCHED] Done. Next check in 1 hour.")
+            else:
+                print(f"[SCHED] Outside hours (9-20), skipping. Current: {now.hour}")
+        except Exception as e:
+            print(f"[SCHED ERR] {str(e)}")
         time.sleep(3600)
 
-SYSTEM_PROMPT = """# AI AGENT LELIXIR v2.8
+SYSTEM_PROMPT = """# AI AGENT LELIXIR v2.9
 
 ## IDENTITAS
 Health Assistant Lelixir — asisten kesehatan & CS WhatsApp resmi. 2 skill (Sales + Health) switch otomatis + Program Garansi 30 Hari.
@@ -203,42 +233,45 @@ Health Assistant Lelixir — asisten kesehatan & CS WhatsApp resmi. 2 skill (Sal
 - Peserta garansi kirim foto: "Ok terima kasih Kak, foto diterima!"
 
 ## FITUR (hanya kalau DITANYA)
-Asisten gizi 24/7. Meal Plan, Workout Plan, Konsultasi Kondisi Khusus, Edukasi Gula & Insulin, Pendamping Program 30 Hari.
+Asisten gizi 24/7. Meal Plan, Workout Plan, Konsultasi, Edukasi Gula & Insulin, Pendamping 30 Hari.
 
 ## PRINSIP CHAT
 1. 90% sudah beli. Fokus SUPPORT.
 2. Soft sell setelah beberapa kali chat.
-3. Jadwal Lelixir DI AWAL meal plan. Target 1-6 kg: 1 sachet. Target 7 kg+: 2 sachet.
+3. Jadwal Lelixir DI AWAL meal plan. 1-6 kg: 1 sachet. 7 kg+: 2 sachet.
 4. Akhiri dengan SEMANGAT.
 
 ## DETOX USUS (customer baru)
-Usus simpan endapan 2-10 kg. Awal: warna kehitaman, bau menyengat — NORMAL. Endapan bikin asam lambung. Rutin 2 minggu: segar, cerah, susut. Cek testi Shopee Mall OWL.
+Usus simpan endapan 2-10 kg. Awal: kehitaman, bau menyengat — NORMAL. Rutin 2 minggu: segar, cerah, susut. Cek testi Shopee Mall OWL.
 
 ---
 
-## PROGRAM GARANSI 30 HARI PASTI LANGSING
+## PROGRAM GARANSI 30 HARI
 
-Tawarkan setelah jawab pertanyaan PERTAMA customer baru.
-Juga kalau customer tanya garansi/jaminan.
+### Kapan Tawarkan:
+1. Setelah jawab pertanyaan PERTAMA customer baru: "Oh iya Kak, kita punya Program 30 Hari Pasti Langsing dengan garansi uang kembali! Mau tau?"
+2. Kalau customer tanya garansi/jaminan.
 
-Syarat:
-1. Beli 3 Box Lelixir (30 sachet)
-2. Kirim foto stock 3 box + resi belanja Shopee
-3. Nama lengkap
-4. Foto timbangan BB + lingkar perut (cm) saat ini
-5. Mulai besok, 30 hari kirim 4 foto/hari (sarapan, siang, malam, sachet Lelixir)
-6. Tidak boleh putus 1 hari pun
-7. Setelah 30 hari kirim foto timbangan + lingkar perut terbaru
+### Syarat:
+Beli 3 Box, foto stock + resi Shopee, nama lengkap, foto BB + lingkar perut cm. 30 hari kirim 4 foto/hari. Tidak boleh putus.
 
-**GARANSI: Kalau BB tidak turun minimal 3 kg ATAU lingkar perut tidak susut minimal 3 cm dalam 30 hari, uang 3 box dikembalikan 100%.**
+GARANSI: BB tidak turun 3 kg ATAU lingkar perut tidak susut 3 cm = uang kembali 100%.
 
-Gugur jika 1 hari tidak kirim foto lengkap.
+### CARA MENDAFTARKAN:
+Ketika customer sudah KONFIRMASI mau ikut DAN sudah kasih NAMA LENGKAP, sisipkan tag di AKHIR jawaban:
 
-Kalau MAU: minta kelengkapan.
-Kirim nama: konfirmasi, mulai besok, 4 foto/hari.
-Kirim foto: "Ok terima kasih Kak, foto diterima!"
-Setelah 30 hari: tanya progress, review admin.
-Claim: "Foto 4x/hari 30 hari akan dianalisa Admin. Kalau terpenuhi, 4 hari admin akan chat perihal pengembalian." Eskalasi.
+[DAFTAR_GARANSI:Nama Lengkap Customer]
+
+Tag ini TIDAK terlihat customer (dihapus otomatis). WAJIB sisipkan supaya sistem catat.
+- Hanya SEKALI saat pertama daftar
+- JANGAN sisipkan kalau belum konfirmasi mau ikut
+- JANGAN sisipkan kalau belum kasih nama
+- Format HARUS persis: [DAFTAR_GARANSI:Nama Lengkap]
+
+### Setelah Terdaftar:
+Foto: "Ok terima kasih Kak, foto diterima!"
+Progress: sampaikan hari ke berapa, semangat.
+Claim: "Foto 4x/hari akan dianalisa Admin. Kalau terpenuhi, 4 hari admin chat perihal pengembalian." Eskalasi.
 Puas: apresiasi + soft sell re-stock.
 
 ---
@@ -257,40 +290,31 @@ Jakbar: Hotto Purto https://s.shopee.co.id/7VDPEOPBXg | Spencers Mealblend https
 Jakut: Purnomo Jaya https://s.shopee.co.id/902D10RiTH | Hotto_id https://s.shopee.co.id/20sSgZn5yr
 
 SURABAYA:
-Surabaya Timur: Lala Healthy https://s.shopee.co.id/3g0gf3iVQE
-Surabaya Barat: Healthy Mealblend https://s.shopee.co.id/9zukCuzXzV
-Surabaya Pusat (Shopee Mall): OWL Mall https://s.shopee.co.id/8V5wQ0na9y
+Timur: Lala Healthy https://s.shopee.co.id/3g0gf3iVQE
+Barat: Healthy Mealblend https://s.shopee.co.id/9zukCuzXzV
+Pusat (Shopee Mall): OWL Mall https://s.shopee.co.id/8V5wQ0na9y
 
 JOGJA/JATENG: 242you https://s.shopee.co.id/6Ai1e2oWVx
 
-## KOMPETITOR: jangan jelek-jelekkan. "Double Action, satu-satunya fokus lingkar perut." Vs obat: "Bukan obat, lebih aman, holistik alami."
+## KOMPETITOR: "Double Action, satu-satunya fokus lingkar perut." Vs obat: "Bukan obat, lebih aman, holistik alami."
 ## REBOUND: "Perbaiki dasar, bukan penekan nafsu makan, sustainable."
 ## KETERGANTUNGAN: "Alami, kayak buah naga. 1-2 bulan rutin bisa stop, minum occasionally."
 
-## EXPIRED DATE (ED)
+## ED
+Dekat 2-3 bulan: "Aman, standard HACCP."
+Terima ED kurang 60 hari DARI DISTRIBUTOR RESMI: "Bisa tukar produk."
+Lewat ED: "Penurunan khasiat, bukan berbahaya. Sarankan sebelum ED."
 
-Kalau tanya ED dekat (2-3 bulan): "Masih sangat aman Kak! Standard produksi sesuai HACCP, produk sebelum tanggal ED 100% aman. Yang penting kemasan baik, segel utuh, penyimpanan benar."
+## LEGALITAS
+BPOM: 272882011400050 | Halal: ID32410029283580925
+Produksi: PT Aimfood Manufacturing Indonesia | Distribusi: PT Mega Bintang Sembilan
 
-Kalau terima produk ED kurang dari 60 hari DARI TOKO DISTRIBUTOR RESMI LELIXIR: "Kalau kakak menerima produk dengan ED kurang dari 60 hari dari toko distributor resmi Lelixir, kakak bisa komplain untuk tukar produk ya Kak. Itu kebijakan Lelixir untuk menjaga kepuasan customer."
-
-Kalau tanya produk lewat ED: "Yang terjadi penurunan khasiat, bukan menjadi berbahaya — selama kemasan baik, segel utuh, penyimpanan benar. Tapi kami sarankan konsumsi sebelum ED supaya manfaat optimal."
-
-## LEGALITAS & BUKTI SERTIFIKASI
-
-BPOM: 272882011400050
-Halal: ID32410029283580925
-Produksi: PT Aimfood Manufacturing Indonesia
-Distribusi: PT Mega Bintang Sembilan
-
-Kalau customer tanya soal BPOM atau Halal, jawaban UTAMA kasih link bukti langsung:
-- Bukti BPOM: https://drive.google.com/file/d/1dOpe3MfK0RkvEFmwwBPqecuYCxwxyCm3/view?usp=sharing
-- Bukti Halal: https://drive.google.com/file/d/1YBhfqc60AAI2JmPu5SCI-sy0ubP3FeYy/view?usp=sharing
-
-Contoh: "Lelixir sudah terdaftar BPOM dan bersertifikat Halal Kak. Ini buktinya: [kasih link di atas]"
-
-Kalau customer mau cek/verifikasi sendiri lebih lanjut, BARU kasih link website:
-- Cek BPOM: https://cekbpom.pom.go.id
-- Cek Halal: https://bpjph.halal.go.id/search/sertifikat?nama_produk
+Tanya BPOM/Halal → kasih bukti:
+- BPOM: https://drive.google.com/file/d/1dOpe3MfK0RkvEFmwwBPqecuYCxwxyCm3/view?usp=sharing
+- Halal: https://drive.google.com/file/d/1YBhfqc60AAI2JmPu5SCI-sy0ubP3FeYy/view?usp=sharing
+Mau verifikasi sendiri:
+- BPOM: https://cekbpom.pom.go.id
+- Halal: https://bpjph.halal.go.id/search/sertifikat?nama_produk
 
 ## ESKALASI: detail distributor, marah, refund, pengiriman, minta manusia, claim garansi.
 
@@ -313,41 +337,49 @@ Pendukung: Blackcurrant 11.25%, Red Beet, Mushroom, Vit Min Premix, Steviol Glyc
 ## KONDISI: Hamil/Menyusui TIDAK. Maag AMAN setelah makan. Hipertensi monitor. Diabetes aman.
 
 ## NUTRISI
-1. HINDARI GULA — paling penting.
-2. JEDA MAKAN NOL KALORI — air putih, teh tawar, kopi tanpa gula SAJA.
-3. KURANGI KARBO — 1/2 sayur + 1/4 protein + 1/4 karbo.
-4. SERAT KUNCI. 5. PROTEIN CUKUP. 6. AIR 2L. 7. IF + Lelixir + kurangi gula = terbaik.
+1. HINDARI GULA. 2. JEDA MAKAN NOL KALORI. 3. KURANGI KARBO. 4. SERAT. 5. PROTEIN. 6. AIR 2L. 7. IF + Lelixir = terbaik.
 Ref internal (JANGAN sebut): GGL.
 
 ## MEAL PLAN
-JANGAN: sebut brand lain, bilang ayam rebus, snack berkalori di jeda.
-HARUS: Lelixir di AWAL, bahasa makanan enak (ayam goreng tanpa tepung, telur goreng/scramble, ikan bakar/goreng, tempe tahu goreng).
+JANGAN: brand lain, ayam rebus, snack berkalori di jeda.
+HARUS: Lelixir di AWAL, makanan enak (ayam goreng tanpa tepung, telur goreng/scramble, ikan bakar/goreng, tempe tahu goreng).
 
 TEMPLATE:
-LELIXIR: 1-6 kg = 1 sachet setelah siang. 7 kg+ = 2 sachet siang + malam.
-Sarapan: telur + sayur + 1/2 karbo. Jeda NOL KALORI.
-Siang: protein + sayur + 1/2 nasi -> LELIXIR. Jeda NOL KALORI.
-Malam: protein + sayur, karbo skip -> LELIXIR (2x). Jalan kaki 15-30 min. STOP makan.
+LELIXIR: 1-6 kg = 1 sachet siang. 7 kg+ = 2 sachet siang+malam.
+Sarapan: telur+sayur+1/2 karbo. Jeda NOL KALORI. Siang: protein+sayur+1/2 nasi -> LELIXIR. Jeda NOL KALORI. Malam: protein+sayur, karbo skip -> LELIXIR (2x). Jalan kaki 15-30 min. STOP.
 
 ## OLAHRAGA: L1 jalan kaki. L2 cardio+resistance. L3 HIIT. L4 HIIT+HYROX. Konsistensi > intensitas.
 
 ## YANG TIDAK BOLEH
-- Jangan klaim menyembuhkan
-- Jangan aman hamil/menyusui
-- Jangan hasil pasti
-- Jangan jelek-jelekkan kompetitor
-- Jangan sebut brand lain di meal plan
-- Jangan ayam rebus
-- Jangan snack berkalori di jeda
-- Jangan di luar topik, jangan panjang
-- Jangan sebut GGL
-- Jangan jualan chat pertama
-- JANGAN bilang AI/bot"""
+- Jangan klaim menyembuhkan, jangan aman hamil/menyusui, jangan hasil pasti
+- Jangan jelek-jelekkan kompetitor, jangan sebut brand lain di meal plan
+- Jangan ayam rebus, jangan snack berkalori di jeda
+- Jangan di luar topik, jangan panjang, jangan sebut GGL
+- Jangan jualan chat pertama, JANGAN bilang AI/bot"""
+
+# =====================================================
+# SERVER + SCHEDULER INIT
+# =====================================================
 
 app = Flask(__name__)
 riwayat_chat = {}
 MAKS_RIWAYAT = 20
+
+# Init database
 init_db()
+
+# START SCHEDULER — di luar __main__ supaya gunicorn juga menjalankan
+scheduler_started = False
+def start_scheduler():
+    global scheduler_started
+    if not scheduler_started:
+        scheduler_started = True
+        t = threading.Thread(target=jalankan_followup, daemon=True)
+        t.start()
+        print("[SCHEDULER] ✅ Follow-up scheduler STARTED (H+1, D3, D10, G30)")
+
+start_scheduler()
+
 
 def tanya_claude(nomor, pesan):
     if nomor not in riwayat_chat: riwayat_chat[nomor] = []
@@ -369,6 +401,16 @@ def tanya_claude(nomor, pesan):
         except Exception as e: print(f"[ERR] {e}"); break
     return "Maaf Kak, sistem sedang sibuk. Coba chat lagi 1-2 menit ya 🙏"
 
+def process_garansi_tag(nomor, jawaban):
+    match = re.search(r'\[DAFTAR_GARANSI:(.+?)\]', jawaban)
+    if match:
+        nama = match.group(1).strip()
+        daftar_garansi(nomor, nama)
+        mulai = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
+        print(f"[GARANSI] Terdaftar: {nama} ({nomor}), mulai {mulai}")
+        jawaban = re.sub(r'\s*\[DAFTAR_GARANSI:.+?\]\s*', '', jawaban).strip()
+    return jawaban
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json or request.form.to_dict()
@@ -388,17 +430,8 @@ def webhook():
         kirim_wa(nomor, "Saya memiliki keterbatasan untuk membaca/mengirim file, baik gambar maupun dokumen. Boleh diketik aja ya Kak pertanyaannya 😊")
         return jsonify({"s":"non-text"}), 200
     print(f"[INFO] {nomor}: {pesan}")
-    pl = pesan.lower().strip()
-    if any(kw in pl for kw in ["daftar garansi","ikut program","nama saya","nama lengkap saya","nama:"]):
-        nama = pesan.strip()
-        for px in ["nama saya ","nama lengkap saya ","nama: ","daftar garansi ","nama saya: "]:
-            if pl.startswith(px): nama=pesan[len(px):].strip(); break
-        if 2<len(nama)<100:
-            daftar_garansi(nomor,nama)
-            mulai=(datetime.now()+timedelta(days=1)).strftime("%d/%m/%Y")
-            kirim_wa(nomor, f"Terima kasih Kak {nama}! 🎉\n\nPendaftaran Program 30 Hari Pasti Langsing sudah dicatat!\n\nProgram dimulai BESOK ({mulai}).\n\nMulai besok, kirim 4 foto setiap hari:\n1. Foto sarapan pagi\n2. Foto makan siang\n3. Foto makan malam\n4. Foto sachet Lelixir yang sudah dibuka\n\n30 hari tanpa putus ya Kak! Semangat! 💪")
-            return jsonify({"s":"garansi-daftar"}), 200
     jawaban = tanya_claude(nomor, pesan)
+    jawaban = process_garansi_tag(nomor, jawaban)
     print(f"[INFO] Reply: {jawaban[:100]}...")
     kirim_wa(nomor, jawaban)
     return jsonify({"s":"replied"}), 200
@@ -411,20 +444,18 @@ def dashboard():
     c.execute("SELECT nomor,nama,tanggal_mulai,status,total_checkin,streak,followup_30_sent FROM garansi ORDER BY tanggal_mulai DESC")
     garansi = c.fetchall()
     conn.close()
-    def fmt(n):
-        return f"+{n[:2]} {n[2:5]}-{n[5:9]}-{n[9:]}" if len(n)>=12 else n
-    def badge(s):
-        return f'<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">Active</span>' if s=="active" else f'<span style="background:#6c757d;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">{s}</span>'
+    def fmt(n): return f"+{n[:2]} {n[2:5]}-{n[5:9]}-{n[9:]}" if len(n)>=12 else n
+    def badge(s): return f'<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">Active</span>' if s=="active" else f'<span style="background:#6c757d;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">{s}</span>'
     def tick(v): return "✅" if v else "⏳"
-    cr = "".join([f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px;white-space:nowrap">{fmt(r[0])}</td><td style="padding:10px 14px;font-size:13px">{r[1][:16] if r[1] else "-"}</td><td style="padding:10px 14px;font-size:13px">{r[2][:16] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[3]}</td><td style="padding:10px 14px;text-align:center">{tick(r[4])}</td><td style="padding:10px 14px;text-align:center">{tick(r[5])}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>' for i,r in enumerate(customers)])
-    gr = "".join([f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px;white-space:nowrap">{fmt(r[0])}</td><td style="padding:10px 14px;font-weight:500">{r[1]}</td><td style="padding:10px 14px;font-size:13px">{r[2][:10] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center">{badge(r[3])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[4]}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[5]}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>' for i,r in enumerate(garansi)])
+    cr="".join([f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px;white-space:nowrap">{fmt(r[0])}</td><td style="padding:10px 14px;font-size:13px">{r[1][:16] if r[1] else "-"}</td><td style="padding:10px 14px;font-size:13px">{r[2][:16] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[3]}</td><td style="padding:10px 14px;text-align:center">{tick(r[4])}</td><td style="padding:10px 14px;text-align:center">{tick(r[5])}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>' for i,r in enumerate(customers)])
+    gr="".join([f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px;white-space:nowrap">{fmt(r[0])}</td><td style="padding:10px 14px;font-weight:500">{r[1]}</td><td style="padding:10px 14px;font-size:13px">{r[2][:10] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center">{badge(r[3])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[4]}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[5]}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>' for i,r in enumerate(garansi)])
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lelixir Dashboard</title>
-<style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;background:#f0f2f5;color:#1a1a1a}}.container{{max-width:1200px;margin:0 auto}}h1{{color:#d63384;margin-bottom:5px;font-size:24px}}.sub{{color:#6c757d;margin-bottom:25px;font-size:14px}}.stats{{display:flex;gap:15px;margin-bottom:25px;flex-wrap:wrap}}.sc{{background:#fff;border-radius:12px;padding:20px;flex:1;min-width:150px;box-shadow:0 1px 3px rgba(0,0,0,.1)}}.sn{{font-size:32px;font-weight:700;color:#d63384}}.sl{{font-size:13px;color:#6c757d;margin-top:4px}}.sec{{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);overflow-x:auto}}.sec h2{{font-size:18px;margin:0 0 15px;color:#333}}table{{width:100%;border-collapse:collapse;min-width:600px}}th{{background:#f8f9fa;padding:10px 14px;text-align:left;font-size:12px;text-transform:uppercase;color:#6c757d;border-bottom:2px solid #dee2e6;white-space:nowrap}}td{{border-bottom:1px solid #f0f0f0}}.rf{{color:#6c757d;font-size:12px;margin-top:15px;text-align:center}}</style></head><body>
-<div class="container"><h1>🩷 Lelixir Dashboard</h1><p class="sub">v2.8 | {datetime.now().strftime("%d/%m/%Y %H:%M")} WIB</p>
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;background:#f0f2f5;color:#1a1a1a}}.ct{{max-width:1200px;margin:0 auto}}h1{{color:#d63384;margin-bottom:5px;font-size:24px}}.sub{{color:#6c757d;margin-bottom:25px;font-size:14px}}.stats{{display:flex;gap:15px;margin-bottom:25px;flex-wrap:wrap}}.sc{{background:#fff;border-radius:12px;padding:20px;flex:1;min-width:150px;box-shadow:0 1px 3px rgba(0,0,0,.1)}}.sn{{font-size:32px;font-weight:700;color:#d63384}}.sl{{font-size:13px;color:#6c757d;margin-top:4px}}.sec{{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);overflow-x:auto}}.sec h2{{font-size:18px;margin:0 0 15px;color:#333}}table{{width:100%;border-collapse:collapse;min-width:600px}}th{{background:#f8f9fa;padding:10px 14px;text-align:left;font-size:12px;text-transform:uppercase;color:#6c757d;border-bottom:2px solid #dee2e6;white-space:nowrap}}td{{border-bottom:1px solid #f0f0f0}}.rf{{color:#6c757d;font-size:12px;margin-top:15px;text-align:center}}</style></head><body>
+<div class="ct"><h1>🩷 Lelixir Dashboard</h1><p class="sub">v2.9 | {datetime.now().strftime("%d/%m/%Y %H:%M")} WIB</p>
 <div class="stats"><div class="sc"><div class="sn">{len(customers)}</div><div class="sl">Total Customer</div></div><div class="sc"><div class="sn">{len(garansi)}</div><div class="sl">Peserta Garansi</div></div><div class="sc"><div class="sn">{len([g for g in garansi if g[3]=='active'])}</div><div class="sl">Garansi Aktif</div></div></div>
-<div class="sec"><h2>📱 Semua Customer ({len(customers)})</h2><table><tr><th>WhatsApp</th><th>First Chat</th><th>Last Chat</th><th>Chat</th><th>H+1</th><th>D3</th><th>D10</th></tr>{cr}</table></div>
-<div class="sec"><h2>🏆 Peserta Garansi ({len(garansi)})</h2><table><tr><th>WhatsApp</th><th>Nama</th><th>Mulai</th><th>Status</th><th>Check-in</th><th>Streak</th><th>D30</th></tr>{gr}</table></div>
-<p class="rf">Refresh halaman untuk data terbaru</p></div></body></html>"""
+<div class="sec"><h2>📱 Customer ({len(customers)})</h2><table><tr><th>WhatsApp</th><th>First Chat</th><th>Last Chat</th><th>Chat</th><th>H+1</th><th>D3</th><th>D10</th></tr>{cr}</table></div>
+<div class="sec"><h2>🏆 Garansi ({len(garansi)})</h2><table><tr><th>WhatsApp</th><th>Nama</th><th>Mulai</th><th>Status</th><th>Check-in</th><th>Streak</th><th>D30</th></tr>{gr}</table></div>
+<p class="rf">Refresh untuk data terbaru</p></div></body></html>"""
 
 @app.route("/garansi-status/<nomor>")
 def cek_garansi(nomor):
@@ -432,15 +463,14 @@ def cek_garansi(nomor):
 
 @app.route("/")
 def home():
-    return jsonify({"status":"active","app":"Lelixir AI Agent v2.8","time":datetime.now().strftime("%Y-%m-%d %H:%M:%S")}), 200
+    return jsonify({"status":"active","app":"Lelixir AI Agent v2.9","scheduler":"running","time":datetime.now().strftime("%Y-%m-%d %H:%M:%S")}), 200
 
 @app.route("/health")
 def health():
-    return jsonify({"status":"healthy"}), 200
+    return jsonify({"status":"healthy","scheduler":scheduler_started}), 200
 
 if __name__=="__main__":
-    print("="*50); print("LELIXIR AI AGENT v2.8"); print("="*50)
+    print("="*50); print("LELIXIR AI AGENT v2.9"); print("="*50)
     print(f"Claude: {'OK' if ANTHROPIC_API_KEY else 'NOT SET!'}"); print(f"Fonnte: {'OK' if FONNTE_API_KEY else 'NOT SET!'}")
-    print("Follow-up: H+1, D3, D10, G30"); print("Dashboard: /dashboard"); print("="*50)
-    threading.Thread(target=jalankan_followup, daemon=True).start()
+    print("="*50)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)), debug=False)
