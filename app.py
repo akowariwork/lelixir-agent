@@ -1,12 +1,11 @@
 """
 ===========================================================
-LELIXIR AI AGENT v2.9 (FIXED)
+LELIXIR AI AGENT v3.0
 ===========================================================
-- FIXED: Scheduler now runs under gunicorn (not just __main__)
-- Natural garansi registration (AI-driven)
-- Follow-up: H+1, D3, D10, G30
-- Auto-retry 3x
-- HTML Dashboard
+- Garansi: 1x participation, miss detection, failed status
+- Eskalasi confirmation rules
+- Updated meal plan concept (7-day varied)
+- Follow-up: H+1, D3, D10, G30, garansi-miss
 - Model: claude-sonnet-4-6
 ===========================================================
 """
@@ -27,15 +26,15 @@ FONNTE_API_KEY = os.environ.get("FONNTE_API_KEY", "")
 ADMIN_WA_NUMBER = os.environ.get("ADMIN_WA_NUMBER", "628xxxxxxxxxx")
 
 FOLLOWUP_H1_GREETING = [
-    "Hai Kak! Kemarin sempat chat ya, makasih sudah mampir 😊\n\nPerkenalkan, saya Health Assistant Lelixir — asisten gizi pribadi kakak yang siap bantu 24 jam.\n\nKakak bisa nanya apa aja ke saya lho, misalnya:\n✅ Cara pakai Lelixir supaya hasilnya maksimal\n✅ Buatkan meal plan harian yang enak dan gampang\n✅ Tips olahraga ringan yang cocok buat kakak\n✅ Soal nutrisi, diet, atau intermittent fasting\n\nJangan sungkan ya Kak — saya senang banget kalau bisa bantu kakak langsing dengan cara yang cepat, aman, dan nyaman! 💪",
-    "Halo Kak! Salam kenal, saya Health Assistant Lelixir 😊\n\nKemarin kakak sempat chat tapi mungkin belum sempat tanya lebih lanjut — santai aja Kak!\n\nSaya bisa bantu banyak hal lho:\n✅ Konsultasi cara memaksimalkan Lelixir\n✅ Buatkan meal plan yang disesuaikan target kakak\n✅ Kasih tips diet & olahraga yang simpel dan do-able\n✅ Jawab soal nutrisi, IF, atau kesehatan pencernaan\n\nAnggap aja saya teman yang paham gizi — tanya apapun, kapan aja! Saya siap bantu kakak dapat hasil terbaik ✨",
-    "Hi Kak! Kemarin sempat mampir chat ya 😊\n\nSaya Health Assistant Lelixir — asisten gizi kakak yang standby 24 jam. Kalau kakak lagi cari cara langsing yang cepat, aman, dan nyaman — saya bisa bantu banget!\n\nMisalnya:\n✅ Cara pakai Lelixir yang paling efektif\n✅ Dibuatkan meal plan harian (termasuk kalau lagi IF)\n✅ Olahraga apa yang paling gampang tapi hasilnya kelihatan\n✅ Nanya soal nutrisi atau kesehatan secara umum\n\nSemua boleh Kak, jangan sungkan! Chat aja kapan pun 🙌"
+    "Hai Kak! Kemarin sempat chat ya, makasih sudah mampir 😊\n\nPerkenalkan, saya Health Assistant Lelixir — asisten gizi pribadi kakak yang siap bantu 24 jam.\n\nKakak bisa nanya apa aja ke saya:\n✅ Cara pakai Lelixir supaya hasil maksimal\n✅ Buatkan meal plan 7 hari yang enak dan gampang\n✅ Tips olahraga ringan yang cocok buat kakak\n✅ Soal nutrisi, diet, atau intermittent fasting\n\nJangan sungkan ya Kak — saya bantu kakak langsing dengan cara yang cepat, aman, dan nyaman! 💪",
+    "Halo Kak! Salam kenal, saya Health Assistant Lelixir 😊\n\nKemarin sempat chat tapi mungkin belum sempat tanya lebih lanjut — santai aja!\n\nSaya bisa bantu:\n✅ Konsultasi cara memaksimalkan Lelixir\n✅ Buatkan meal plan 7 hari sesuai target kakak\n✅ Tips diet & olahraga simpel dan do-able\n✅ Jawab soal nutrisi, IF, atau kesehatan pencernaan\n\nAnggap aja teman yang paham gizi — tanya apapun, kapan aja! ✨",
+    "Hi Kak! Kemarin sempat mampir chat ya 😊\n\nSaya Health Assistant Lelixir — asisten gizi kakak 24 jam. Kalau lagi cari cara langsing yang cepat, aman, nyaman — saya bisa bantu!\n\n✅ Cara pakai Lelixir paling efektif\n✅ Meal plan 7 hari (termasuk kalau lagi IF)\n✅ Olahraga gampang tapi hasilnya kelihatan\n✅ Nanya nutrisi atau kesehatan umum\n\nSemua boleh, jangan sungkan! Chat kapan pun 🙌"
 ]
 
 FOLLOWUP_HARI_3 = [
-    "Hai Kak! Gimana, udah sempat coba Lelixir nya? Di awal-awal biasanya BAB lebih sering — pertanda bagus! Detoksifikasi usus mulai bekerja. Semangat ya! 💪",
-    "Halo Kak! Udah rutin minum Lelixir? Kalau BAB lebih sering, tenang — tanda positif! Usus sedang dibersihkan. Lanjutkan! 🙌",
-    "Hi Kak! Sudah 3 hari nih. Coba rutin 2 minggu ya, hasilnya mulai kelihatan — badan segar, kulit cerah, perut menyusut! Semangat!"
+    "Hai Kak! Gimana, udah coba Lelixir nya? Awal-awal BAB lebih sering — pertanda bagus! Detoksifikasi mulai bekerja. Semangat! 💪",
+    "Halo Kak! Udah rutin minum Lelixir? BAB lebih sering = tanda positif! Usus sedang dibersihkan. Lanjutkan! 🙌",
+    "Hi Kak! Sudah 3 hari. Coba rutin 2 minggu, hasilnya mulai kelihatan — segar, cerah, perut menyusut! Semangat!"
 ]
 
 FOLLOWUP_HARI_10 = [
@@ -46,6 +45,10 @@ FOLLOWUP_HARI_10 = [
 
 FOLLOWUP_GARANSI_30 = [
     "Hai Kak {nama}! 🎉\n\nUdah 30 hari sejak kakak daftar Program Pasti Langsing! Selamat udah konsisten! 💪\n\nGimana Kak, udah turun berapa kg dan berapa cm lingkar perutnya?\n\nTolong kirim:\n1. Foto timbangan terbaru\n2. Foto ukur lingkar perut terbaru\n\nFoto dan progress kakak akan di-review oleh admin ya.\n\nApakah kakak merasa ada progress? Cerita dong!"
+]
+
+GARANSI_MISS_MSG = [
+    "Hai Kak {nama} 😊\n\nKemarin kakak nggak sempat upload foto ya? Sayang banget, program garansi 30 hari nya jadi gugur Kak 😔\n\nTapi gpp ya Kak, tetap semangat! Kalau kakak tetap rutin konsumsi Lelixir, hasilnya pasti tetap kelihatan kok. Udah buanyaakk yang berhasil — bahkan di minggu-minggu pertama udah pada turun 2-3 kg! 💪\n\nKalau ada pertanyaan, saya masih di sini bantu kakak ya. Semangat hidup sehat! ✨"
 ]
 
 DB_PATH = "lelixir_customers.db"
@@ -59,7 +62,7 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS garansi (
         nomor TEXT PRIMARY KEY, nama TEXT, tanggal_daftar TEXT, tanggal_mulai TEXT,
         status TEXT DEFAULT 'pending', total_checkin INTEGER DEFAULT 0, last_checkin_date TEXT,
-        streak INTEGER DEFAULT 0, followup_30_sent INTEGER DEFAULT 0)""")
+        streak INTEGER DEFAULT 0, followup_30_sent INTEGER DEFAULT 0, miss_notified INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS checkin_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT, nomor TEXT, tanggal TEXT, jumlah_foto INTEGER DEFAULT 0, timestamp TEXT)""")
     conn.commit()
@@ -69,7 +72,7 @@ def catat_customer(nomor):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.now().isoformat()
-    c.execute("SELECT chat_count FROM customers WHERE nomor = ?", (nomor,))
+    c.execute("SELECT chat_count FROM customers WHERE nomor=?", (nomor,))
     row = c.fetchone()
     if row:
         c.execute("UPDATE customers SET last_chat=?, chat_count=? WHERE nomor=?", (now, row[0]+1, nomor))
@@ -111,8 +114,43 @@ def get_garansi_status(nomor):
     row = c.fetchone()
     conn.close()
     if row:
-        return {"nomor":row[0],"nama":row[1],"tanggal_daftar":row[2],"tanggal_mulai":row[3],"status":row[4],"total_checkin":row[5],"last_checkin_date":row[6],"streak":row[7],"followup_30_sent":row[8] if len(row)>8 else 0}
+        return {"nomor":row[0],"nama":row[1],"tanggal_daftar":row[2],"tanggal_mulai":row[3],"status":row[4],
+                "total_checkin":row[5],"last_checkin_date":row[6],"streak":row[7],
+                "followup_30_sent":row[8] if len(row)>8 else 0,
+                "miss_notified":row[9] if len(row)>9 else 0}
     return None
+
+def check_garansi_miss():
+    """Cek peserta garansi yang kemarin tidak checkin -> gagal."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()[:10]
+    c.execute("""
+        SELECT nomor, nama, tanggal_mulai FROM garansi
+        WHERE status='active' AND miss_notified=0
+        AND date(tanggal_mulai) <= ?
+    """, (yesterday,))
+    candidates = c.fetchall()
+    missed = []
+    for nomor, nama, mulai in candidates:
+        c.execute("SELECT jumlah_foto FROM checkin_log WHERE nomor=? AND tanggal=?", (nomor, yesterday))
+        row = c.fetchone()
+        foto_count = row[0] if row else 0
+        if foto_count < 4:
+            missed.append((nomor, nama))
+            c.execute("UPDATE garansi SET status='failed', miss_notified=1 WHERE nomor=?", (nomor,))
+    conn.commit()
+    conn.close()
+    return missed
+
+def has_participated_garansi(nomor):
+    """Cek apakah nomor pernah ikut garansi (1x saja)."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT status FROM garansi WHERE nomor=?", (nomor,))
+    row = c.fetchone()
+    conn.close()
+    return row is not None
 
 def get_garansi_for_followup_30():
     conn = sqlite3.connect(DB_PATH)
@@ -136,7 +174,7 @@ def daftar_garansi(nomor, nama):
     c = conn.cursor()
     now = datetime.now().isoformat()
     mulai = (datetime.now() + timedelta(days=1)).isoformat()[:10]
-    c.execute("INSERT INTO garansi VALUES (?,?,?,?,'active',0,'',0,0) ON CONFLICT(nomor) DO UPDATE SET nama=?,tanggal_daftar=?,tanggal_mulai=?,status='active',total_checkin=0,last_checkin_date='',streak=0,followup_30_sent=0",
+    c.execute("INSERT INTO garansi VALUES (?,?,?,?,'active',0,'',0,0,0) ON CONFLICT(nomor) DO UPDATE SET nama=?,tanggal_daftar=?,tanggal_mulai=?,status='active',total_checkin=0,last_checkin_date='',streak=0,followup_30_sent=0,miss_notified=0",
               (nomor,nama,now,mulai,nama,now,mulai))
     conn.commit()
     conn.close()
@@ -174,57 +212,41 @@ def kirim_wa(nomor, pesan):
     except Exception as e: print(f"[ERR] {e}"); return False
 
 def jalankan_followup():
-    """Scheduler yang cek follow-up setiap jam."""
-    print("[SCHEDULER] Thread started, checking every hour between 9-20 WIB")
+    print("[SCHEDULER] Thread started")
     while True:
         try:
             now = datetime.now()
             if 9 <= now.hour <= 20:
-                print(f"[SCHED] Running checks at {now.strftime('%Y-%m-%d %H:%M')}")
+                print(f"[SCHED] {now.strftime('%Y-%m-%d %H:%M')}")
 
-                h1_list = get_customers_for_h1_followup()
-                print(f"[SCHED] H+1 candidates: {len(h1_list)}")
-                for n in h1_list:
-                    kirim_wa(n, random.choice(FOLLOWUP_H1_GREETING))
-                    tandai_followup(n, "followup_h1_sent")
-                    print(f"[H1 SENT] {n}")
-                    time.sleep(3)
+                # Garansi miss check (jam 9 pagi)
+                if now.hour == 9:
+                    missed = check_garansi_miss()
+                    for nomor, nama in missed:
+                        msg = GARANSI_MISS_MSG[0].replace("{nama}", nama)
+                        kirim_wa(nomor, msg)
+                        print(f"[MISS] {nomor} ({nama}) -> failed")
+                        time.sleep(3)
 
-                d3_list = get_customers_for_followup(3, "followup_3_sent")
-                print(f"[SCHED] D3 candidates: {len(d3_list)}")
-                for n in d3_list:
-                    kirim_wa(n, random.choice(FOLLOWUP_HARI_3))
-                    tandai_followup(n, "followup_3_sent")
-                    print(f"[D3 SENT] {n}")
-                    time.sleep(3)
-
-                d10_list = get_customers_for_followup(10, "followup_10_sent")
-                print(f"[SCHED] D10 candidates: {len(d10_list)}")
-                for n in d10_list:
-                    kirim_wa(n, random.choice(FOLLOWUP_HARI_10))
-                    tandai_followup(n, "followup_10_sent")
-                    print(f"[D10 SENT] {n}")
-                    time.sleep(3)
-
-                g30_list = get_garansi_for_followup_30()
-                print(f"[SCHED] G30 candidates: {len(g30_list)}")
-                for n, nm in g30_list:
-                    kirim_wa(n, FOLLOWUP_GARANSI_30[0].replace("{nama}", nm))
-                    tandai_garansi_30(n)
-                    print(f"[G30 SENT] {n}")
-                    time.sleep(3)
-
-                print(f"[SCHED] Done. Next check in 1 hour.")
-            else:
-                print(f"[SCHED] Outside hours (9-20), skipping. Current: {now.hour}")
-        except Exception as e:
-            print(f"[SCHED ERR] {str(e)}")
+                # H+1
+                for n in get_customers_for_h1_followup():
+                    kirim_wa(n, random.choice(FOLLOWUP_H1_GREETING)); tandai_followup(n,"followup_h1_sent"); print(f"[H1] {n}"); time.sleep(3)
+                # D3
+                for n in get_customers_for_followup(3,"followup_3_sent"):
+                    kirim_wa(n, random.choice(FOLLOWUP_HARI_3)); tandai_followup(n,"followup_3_sent"); print(f"[D3] {n}"); time.sleep(3)
+                # D10
+                for n in get_customers_for_followup(10,"followup_10_sent"):
+                    kirim_wa(n, random.choice(FOLLOWUP_HARI_10)); tandai_followup(n,"followup_10_sent"); print(f"[D10] {n}"); time.sleep(3)
+                # G30
+                for n,nm in get_garansi_for_followup_30():
+                    kirim_wa(n, FOLLOWUP_GARANSI_30[0].replace("{nama}",nm)); tandai_garansi_30(n); print(f"[G30] {n}"); time.sleep(3)
+        except Exception as e: print(f"[SCHED ERR] {e}")
         time.sleep(3600)
 
-SYSTEM_PROMPT = """# AI AGENT LELIXIR v2.9
+SYSTEM_PROMPT = """# AI AGENT LELIXIR v3.0
 
 ## IDENTITAS
-Health Assistant Lelixir — asisten kesehatan & CS WhatsApp resmi. 2 skill (Sales + Health) switch otomatis + Program Garansi 30 Hari.
+Health Assistant Lelixir — asisten kesehatan & CS WhatsApp resmi. 2 skill switch otomatis + Program Garansi 30 Hari.
 
 ## ATURAN IDENTITAS
 - JANGAN PERNAH bilang AI/bot/chatbot
@@ -233,13 +255,20 @@ Health Assistant Lelixir — asisten kesehatan & CS WhatsApp resmi. 2 skill (Sal
 - Peserta garansi kirim foto: "Ok terima kasih Kak, foto diterima!"
 
 ## FITUR (hanya kalau DITANYA)
-Asisten gizi 24/7. Meal Plan, Workout Plan, Konsultasi, Edukasi Gula & Insulin, Pendamping 30 Hari.
+Asisten gizi 24/7. Meal Plan 7 Hari, Workout Plan, Konsultasi, Edukasi Gula & Insulin, Pendamping 30 Hari.
 
 ## PRINSIP CHAT
 1. 90% sudah beli. Fokus SUPPORT.
 2. Soft sell setelah beberapa kali chat.
 3. Jadwal Lelixir DI AWAL meal plan. 1-6 kg: 1 sachet. 7 kg+: 2 sachet.
 4. Akhiri dengan SEMANGAT.
+
+## ATURAN ESKALASI — PENTING
+Setiap kali mau eskalasi ke admin manusia (apapun alasannya), SELALU minta konfirmasi dulu:
+"Baik Kak, apa kakak berkenan saya bantu eskalasikan kendala kakak supaya bisa dikasih solusi terbaik?"
+Baru setelah customer jawab ok/mau/iya, baru eskalasi:
+"Terima kasih Kak, saya sambungkan dengan admin kami ya. Mohon tunggu sebentar 🙏"
+JANGAN langsung eskalasi tanpa konfirmasi.
 
 ## DETOX USUS (customer baru)
 Usus simpan endapan 2-10 kg. Awal: kehitaman, bau menyengat — NORMAL. Rutin 2 minggu: segar, cerah, susut. Cek testi Shopee Mall OWL.
@@ -249,29 +278,28 @@ Usus simpan endapan 2-10 kg. Awal: kehitaman, bau menyengat — NORMAL. Rutin 2 
 ## PROGRAM GARANSI 30 HARI
 
 ### Kapan Tawarkan:
-1. Setelah jawab pertanyaan PERTAMA customer baru: "Oh iya Kak, kita punya Program 30 Hari Pasti Langsing dengan garansi uang kembali! Mau tau?"
+1. Setelah jawab pertanyaan PERTAMA customer baru.
 2. Kalau customer tanya garansi/jaminan.
+
+### ATURAN PENTING:
+- 1 peserta HANYA BISA 1x partisipasi program garansi. Kalau sudah pernah ikut (berhasil atau gagal), tidak bisa ikut lagi.
+- Kalau lupa 1 hari saja tidak upload 4 foto = program GUGUR / HANGUS
+- Kalau gagal di hari pertama dan customer minta bantuan, tawarkan eskalasi (dengan konfirmasi dulu): "Baik Kak, apa kakak berkenan saya bantu eskalasikan supaya bisa dikasih solusi terbaik?" Baru eskalasi kalau dijawab ok.
 
 ### Syarat:
 Beli 3 Box, foto stock + resi Shopee, nama lengkap, foto BB + lingkar perut cm. 30 hari kirim 4 foto/hari. Tidak boleh putus.
-
 GARANSI: BB tidak turun 3 kg ATAU lingkar perut tidak susut 3 cm = uang kembali 100%.
 
-### CARA MENDAFTARKAN:
-Ketika customer sudah KONFIRMASI mau ikut DAN sudah kasih NAMA LENGKAP, sisipkan tag di AKHIR jawaban:
-
+### MENDAFTARKAN:
+Ketika customer KONFIRMASI mau + kasih NAMA LENGKAP, sisipkan tag di akhir jawaban:
 [DAFTAR_GARANSI:Nama Lengkap Customer]
-
-Tag ini TIDAK terlihat customer (dihapus otomatis). WAJIB sisipkan supaya sistem catat.
-- Hanya SEKALI saat pertama daftar
-- JANGAN sisipkan kalau belum konfirmasi mau ikut
-- JANGAN sisipkan kalau belum kasih nama
-- Format HARUS persis: [DAFTAR_GARANSI:Nama Lengkap]
+Tag dihapus otomatis, customer nggak lihat. Hanya SEKALI saat pertama daftar.
+Kalau customer sudah pernah ikut program sebelumnya, JANGAN daftarkan lagi. Bilang: "Maaf Kak, program garansi hanya bisa diikuti 1x per customer ya."
 
 ### Setelah Terdaftar:
 Foto: "Ok terima kasih Kak, foto diterima!"
-Progress: sampaikan hari ke berapa, semangat.
-Claim: "Foto 4x/hari akan dianalisa Admin. Kalau terpenuhi, 4 hari admin chat perihal pengembalian." Eskalasi.
+Progress: hari ke berapa, semangat.
+Claim: "Foto 4x/hari akan dianalisa Admin. Kalau terpenuhi, 4 hari admin chat perihal pengembalian." Eskalasi (dengan konfirmasi).
 Puas: apresiasi + soft sell re-stock.
 
 ---
@@ -308,15 +336,11 @@ Lewat ED: "Penurunan khasiat, bukan berbahaya. Sarankan sebelum ED."
 ## LEGALITAS
 BPOM: 272882011400050 | Halal: ID32410029283580925
 Produksi: PT Aimfood Manufacturing Indonesia | Distribusi: PT Mega Bintang Sembilan
+Bukti BPOM: https://drive.google.com/file/d/1dOpe3MfK0RkvEFmwwBPqecuYCxwxyCm3/view?usp=sharing
+Bukti Halal: https://drive.google.com/file/d/1YBhfqc60AAI2JmPu5SCI-sy0ubP3FeYy/view?usp=sharing
+Verifikasi: BPOM https://cekbpom.pom.go.id | Halal https://bpjph.halal.go.id/search/sertifikat?nama_produk
 
-Tanya BPOM/Halal → kasih bukti:
-- BPOM: https://drive.google.com/file/d/1dOpe3MfK0RkvEFmwwBPqecuYCxwxyCm3/view?usp=sharing
-- Halal: https://drive.google.com/file/d/1YBhfqc60AAI2JmPu5SCI-sy0ubP3FeYy/view?usp=sharing
-Mau verifikasi sendiri:
-- BPOM: https://cekbpom.pom.go.id
-- Halal: https://bpjph.halal.go.id/search/sertifikat?nama_produk
-
-## ESKALASI: detail distributor, marah, refund, pengiriman, minta manusia, claim garansi.
+## ESKALASI: SELALU konfirmasi dulu sebelum eskalasi.
 
 ---
 
@@ -337,55 +361,108 @@ Pendukung: Blackcurrant 11.25%, Red Beet, Mushroom, Vit Min Premix, Steviol Glyc
 ## KONDISI: Hamil/Menyusui TIDAK. Maag AMAN setelah makan. Hipertensi monitor. Diabetes aman.
 
 ## NUTRISI
-1. HINDARI GULA. 2. JEDA MAKAN NOL KALORI. 3. KURANGI KARBO. 4. SERAT. 5. PROTEIN. 6. AIR 2L. 7. IF + Lelixir = terbaik.
+1. HINDARI GULA — paling penting.
+2. JEDA MAKAN NOL KALORI — air putih, teh tawar, kopi hitam tanpa gula SAJA. Jangan snacking.
+3. KURANGI KARBO — nasi setengah porsi, perbanyak sayur dan protein.
+4. SERAT KUNCI. 5. PROTEIN CUKUP. 6. AIR 2L. 7. IF + Lelixir = terbaik.
+8. HINDARI JUICE BUAH — kalau makan buah harus buah UTUH (serat utuh, glycemic index lebih rendah).
+9. HINDARI BUAH: durian (terlalu manis), pisang (tinggi kalori, tepung) — pisang boleh hanya untuk sarapan pagi.
 Ref internal (JANGAN sebut): GGL.
 
-## MEAL PLAN
-JANGAN: brand lain, ayam rebus, snack berkalori di jeda.
-HARUS: Lelixir di AWAL, makanan enak (ayam goreng tanpa tepung, telur goreng/scramble, ikan bakar/goreng, tempe tahu goreng).
+## KONSEP MEAL PLAN — SANGAT PENTING
 
-TEMPLATE:
-LELIXIR: 1-6 kg = 1 sachet siang. 7 kg+ = 2 sachet siang+malam.
-Sarapan: telur+sayur+1/2 karbo. Jeda NOL KALORI. Siang: protein+sayur+1/2 nasi -> LELIXIR. Jeda NOL KALORI. Malam: protein+sayur, karbo skip -> LELIXIR (2x). Jalan kaki 15-30 min. STOP.
+### PRINSIP:
+- Buatkan meal plan untuk 7 HARI KE DEPAN, bervariasi, JANGAN monoton
+- Setelah 7 hari, minta customer request meal plan baru: "Kalau sudah 7 hari, chat saya lagi ya Kak untuk meal plan minggu berikutnya!"
+- Customer bebas tentukan, kamu kasih panduan rinci
+- Harus ENJOYABLE dan bisa jadi LIFESTYLE — bukan diet menyiksa
 
-## OLAHRAGA: L1 jalan kaki. L2 cardio+resistance. L3 HIIT. L4 HIIT+HYROX. Konsistensi > intensitas.
+### TEMPLATE PER HARI:
+
+JADWAL LELIXIR (selalu di AWAL):
+- Target 1-6 kg: 1 sachet setelah makan siang
+- Target 7 kg+: 1 sachet setelah makan siang + 1 sachet setelah makan malam
+
+SARAPAN (fokus PROTEIN):
+- Telur 2 butir (goreng, scramble, omelette, rebus — pilih suka)
+- 1 lembar roti tawar (boleh di-toast)
+- Kopi hitam (americano) TANPA GULA
+- Alternatif: overnight oat + telur rebus juga boleh
+- Boleh tambah buah utuh (apel, pir, jeruk) — JANGAN juice
+- Pisang HANYA boleh di sarapan (tinggi kalori, jangan di waktu lain)
+- JANGAN: roti manis, susu manis, juice buah, sereal manis
+
+JEDA PAGI-SIANG: NOL KALORI — air putih, teh tawar, kopi hitam tanpa gula. JANGAN snacking.
+
+MAKAN SIANG (biasa aja tapi adjust):
+- Makan biasa, tapi fokus PROTEIN dan SAYUR lebih banyak
+- Nasi setengah porsi aja — kalau masih kurang kenyang, perbanyak sayur dan protein
+- Protein: ayam goreng (tanpa tepung), ikan bakar/goreng, tempe goreng, tahu goreng — boleh semua
+- Sayur: tumis kangkung, capcay, sop, gado-gado tanpa lontong — makin banyak warna makin bagus
+- JANGAN minum es teh manis! Ganti air putih atau teh tawar
+- KALAU biasa pengen dessert / manis setelah makan: MINUM LELIXIR sebagai dessert! Rasanya manis segar, cukup satisfying sebagai penutup makan
+- Setelah makan siang: MINUM LELIXIR
+
+JEDA SIANG-MALAM: NOL KALORI — JANGAN snacking.
+
+MAKAN MALAM (sebelum jam 19):
+- Nasi setengah porsi biasa (atau skip karbo kalau bisa)
+- Sayuran LEBIH BANYAK
+- Protein LEBIH BANYAK
+- KALAU pengen manis setelah makan: MINUM LELIXIR sebagai dessert
+- Setelah makan malam: MINUM LELIXIR (kalau program 2 sachet/hari)
+
+SETELAH MALAM: Jalan kaki 15-30 menit. STOP makan dan minum berkalori.
+
+### VARIASI 7 HARI:
+Setiap hari HARUS beda menu-nya. Contoh variasi protein: hari 1 ayam, hari 2 ikan, hari 3 telur+tempe, hari 4 udang, hari 5 daging sapi, hari 6 ayam+tahu, hari 7 ikan+tempe. Variasi sayur juga berbeda. Variasi sarapan: overnight oat, telur scramble+roti, telur omelette, dll. Buat MENARIK dan NGGAK BOSEN.
+
+### ATURAN BUAH:
+- Buah harus UTUH (jangan di-juice) — serat utuh, GI lebih rendah
+- HINDARI: durian (terlalu manis), pisang di luar sarapan (tinggi kalori)
+- Pisang HANYA boleh di pagi sebagai bagian sarapan
+- Buah yang bagus: apel, pir, jeruk, pepaya, semangka (porsi wajar)
+
+### PENUTUP MEAL PLAN:
+Selalu tutup dengan: "Ini meal plan 7 hari ya Kak. Setelah 7 hari, chat saya lagi untuk meal plan minggu berikutnya! Semangat! 💪"
+
+## OLAHRAGA: L1 jalan kaki 15-30 min. L2 cardio+resistance. L3 HIIT. L4 HIIT+HYROX. Konsistensi > intensitas.
 
 ## YANG TIDAK BOLEH
 - Jangan klaim menyembuhkan, jangan aman hamil/menyusui, jangan hasil pasti
 - Jangan jelek-jelekkan kompetitor, jangan sebut brand lain di meal plan
-- Jangan ayam rebus, jangan snack berkalori di jeda
+- Jangan bilang ayam rebus (kecuali customer minta), jangan snack berkalori di jeda
+- Jangan rekomendasikan juice buah — selalu buah utuh
 - Jangan di luar topik, jangan panjang, jangan sebut GGL
-- Jangan jualan chat pertama, JANGAN bilang AI/bot"""
-
-# =====================================================
-# SERVER + SCHEDULER INIT
-# =====================================================
+- Jangan jualan chat pertama, JANGAN bilang AI/bot
+- Jangan eskalasi tanpa konfirmasi customer dulu"""
 
 app = Flask(__name__)
 riwayat_chat = {}
 MAKS_RIWAYAT = 20
-
-# Init database
 init_db()
 
-# START SCHEDULER — di luar __main__ supaya gunicorn juga menjalankan
 scheduler_started = False
 def start_scheduler():
     global scheduler_started
     if not scheduler_started:
         scheduler_started = True
-        t = threading.Thread(target=jalankan_followup, daemon=True)
-        t.start()
-        print("[SCHEDULER] ✅ Follow-up scheduler STARTED (H+1, D3, D10, G30)")
-
+        threading.Thread(target=jalankan_followup, daemon=True).start()
+        print("[SCHEDULER] ✅ Started (H+1, D3, D10, G30, garansi-miss)")
 start_scheduler()
-
 
 def tanya_claude(nomor, pesan):
     if nomor not in riwayat_chat: riwayat_chat[nomor] = []
     riwayat = riwayat_chat[nomor]
     g = get_garansi_status(nomor)
-    ctx = f"\n[GARANSI] {g['nama']}, mulai {g['tanggal_mulai']}, checkin {g['total_checkin']}, streak {g['streak']}." if g and g["status"]=="active" else ""
+    ctx = ""
+    if g and g["status"]=="active":
+        ctx = f"\n[GARANSI AKTIF] {g['nama']}, mulai {g['tanggal_mulai']}, checkin {g['total_checkin']}, streak {g['streak']}."
+    elif g and g["status"]=="failed":
+        ctx = f"\n[GARANSI GAGAL] {g['nama']} pernah ikut program tapi gagal."
+    participated = has_participated_garansi(nomor)
+    if participated:
+        ctx += "\n[INFO] Customer ini SUDAH PERNAH ikut program garansi. JANGAN daftarkan lagi."
     riwayat.append({"role":"user","content":pesan+ctx})
     if len(riwayat)>MAKS_RIWAYAT: riwayat=riwayat[-MAKS_RIWAYAT:]; riwayat_chat[nomor]=riwayat
     for attempt in range(3):
@@ -405,9 +482,11 @@ def process_garansi_tag(nomor, jawaban):
     match = re.search(r'\[DAFTAR_GARANSI:(.+?)\]', jawaban)
     if match:
         nama = match.group(1).strip()
-        daftar_garansi(nomor, nama)
-        mulai = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
-        print(f"[GARANSI] Terdaftar: {nama} ({nomor}), mulai {mulai}")
+        if not has_participated_garansi(nomor):
+            daftar_garansi(nomor, nama)
+            print(f"[GARANSI] Terdaftar: {nama} ({nomor})")
+        else:
+            print(f"[GARANSI] BLOCKED: {nomor} sudah pernah ikut")
         jawaban = re.sub(r'\s*\[DAFTAR_GARANSI:.+?\]\s*', '', jawaban).strip()
     return jawaban
 
@@ -445,14 +524,19 @@ def dashboard():
     garansi = c.fetchall()
     conn.close()
     def fmt(n): return f"+{n[:2]} {n[2:5]}-{n[5:9]}-{n[9:]}" if len(n)>=12 else n
-    def badge(s): return f'<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">Active</span>' if s=="active" else f'<span style="background:#6c757d;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">{s}</span>'
+    def badge(s):
+        if s=="active": return '<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">Active</span>'
+        elif s=="failed": return '<span style="background:#dc3545;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">Failed</span>'
+        else: return f'<span style="background:#6c757d;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">{s}</span>'
     def tick(v): return "✅" if v else "⏳"
     cr="".join([f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px;white-space:nowrap">{fmt(r[0])}</td><td style="padding:10px 14px;font-size:13px">{r[1][:16] if r[1] else "-"}</td><td style="padding:10px 14px;font-size:13px">{r[2][:16] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[3]}</td><td style="padding:10px 14px;text-align:center">{tick(r[4])}</td><td style="padding:10px 14px;text-align:center">{tick(r[5])}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>' for i,r in enumerate(customers)])
     gr="".join([f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px;white-space:nowrap">{fmt(r[0])}</td><td style="padding:10px 14px;font-weight:500">{r[1]}</td><td style="padding:10px 14px;font-size:13px">{r[2][:10] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center">{badge(r[3])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[4]}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[5]}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>' for i,r in enumerate(garansi)])
+    active_count = len([g for g in garansi if g[3]=='active'])
+    failed_count = len([g for g in garansi if g[3]=='failed'])
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lelixir Dashboard</title>
-<style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;background:#f0f2f5;color:#1a1a1a}}.ct{{max-width:1200px;margin:0 auto}}h1{{color:#d63384;margin-bottom:5px;font-size:24px}}.sub{{color:#6c757d;margin-bottom:25px;font-size:14px}}.stats{{display:flex;gap:15px;margin-bottom:25px;flex-wrap:wrap}}.sc{{background:#fff;border-radius:12px;padding:20px;flex:1;min-width:150px;box-shadow:0 1px 3px rgba(0,0,0,.1)}}.sn{{font-size:32px;font-weight:700;color:#d63384}}.sl{{font-size:13px;color:#6c757d;margin-top:4px}}.sec{{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);overflow-x:auto}}.sec h2{{font-size:18px;margin:0 0 15px;color:#333}}table{{width:100%;border-collapse:collapse;min-width:600px}}th{{background:#f8f9fa;padding:10px 14px;text-align:left;font-size:12px;text-transform:uppercase;color:#6c757d;border-bottom:2px solid #dee2e6;white-space:nowrap}}td{{border-bottom:1px solid #f0f0f0}}.rf{{color:#6c757d;font-size:12px;margin-top:15px;text-align:center}}</style></head><body>
-<div class="ct"><h1>🩷 Lelixir Dashboard</h1><p class="sub">v2.9 | {datetime.now().strftime("%d/%m/%Y %H:%M")} WIB</p>
-<div class="stats"><div class="sc"><div class="sn">{len(customers)}</div><div class="sl">Total Customer</div></div><div class="sc"><div class="sn">{len(garansi)}</div><div class="sl">Peserta Garansi</div></div><div class="sc"><div class="sn">{len([g for g in garansi if g[3]=='active'])}</div><div class="sl">Garansi Aktif</div></div></div>
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;background:#f0f2f5;color:#1a1a1a}}.ct{{max-width:1200px;margin:0 auto}}h1{{color:#d63384;margin-bottom:5px;font-size:24px}}.sub{{color:#6c757d;margin-bottom:25px;font-size:14px}}.stats{{display:flex;gap:15px;margin-bottom:25px;flex-wrap:wrap}}.sc{{background:#fff;border-radius:12px;padding:20px;flex:1;min-width:120px;box-shadow:0 1px 3px rgba(0,0,0,.1)}}.sn{{font-size:32px;font-weight:700;color:#d63384}}.sl{{font-size:13px;color:#6c757d;margin-top:4px}}.sec{{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);overflow-x:auto}}.sec h2{{font-size:18px;margin:0 0 15px;color:#333}}table{{width:100%;border-collapse:collapse;min-width:600px}}th{{background:#f8f9fa;padding:10px 14px;text-align:left;font-size:12px;text-transform:uppercase;color:#6c757d;border-bottom:2px solid #dee2e6;white-space:nowrap}}td{{border-bottom:1px solid #f0f0f0}}.rf{{color:#6c757d;font-size:12px;margin-top:15px;text-align:center}}</style></head><body>
+<div class="ct"><h1>🩷 Lelixir Dashboard</h1><p class="sub">v3.0 | {datetime.now().strftime("%d/%m/%Y %H:%M")} WIB</p>
+<div class="stats"><div class="sc"><div class="sn">{len(customers)}</div><div class="sl">Total Customer</div></div><div class="sc"><div class="sn">{len(garansi)}</div><div class="sl">Peserta Garansi</div></div><div class="sc"><div class="sn">{active_count}</div><div class="sl">Garansi Aktif</div></div><div class="sc"><div class="sn" style="color:#dc3545">{failed_count}</div><div class="sl">Garansi Gagal</div></div></div>
 <div class="sec"><h2>📱 Customer ({len(customers)})</h2><table><tr><th>WhatsApp</th><th>First Chat</th><th>Last Chat</th><th>Chat</th><th>H+1</th><th>D3</th><th>D10</th></tr>{cr}</table></div>
 <div class="sec"><h2>🏆 Garansi ({len(garansi)})</h2><table><tr><th>WhatsApp</th><th>Nama</th><th>Mulai</th><th>Status</th><th>Check-in</th><th>Streak</th><th>D30</th></tr>{gr}</table></div>
 <p class="rf">Refresh untuk data terbaru</p></div></body></html>"""
@@ -463,14 +547,11 @@ def cek_garansi(nomor):
 
 @app.route("/")
 def home():
-    return jsonify({"status":"active","app":"Lelixir AI Agent v2.9","scheduler":"running","time":datetime.now().strftime("%Y-%m-%d %H:%M:%S")}), 200
+    return jsonify({"status":"active","app":"Lelixir AI Agent v3.0","scheduler":scheduler_started,"time":datetime.now().strftime("%Y-%m-%d %H:%M:%S")}), 200
 
 @app.route("/health")
 def health():
     return jsonify({"status":"healthy","scheduler":scheduler_started}), 200
 
 if __name__=="__main__":
-    print("="*50); print("LELIXIR AI AGENT v2.9"); print("="*50)
-    print(f"Claude: {'OK' if ANTHROPIC_API_KEY else 'NOT SET!'}"); print(f"Fonnte: {'OK' if FONNTE_API_KEY else 'NOT SET!'}")
-    print("="*50)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)), debug=False)
