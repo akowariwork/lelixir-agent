@@ -486,15 +486,40 @@ Program ini sengaja dibuat ringan supaya bisa dijalankan. Yang penting konsisten
 
 ### Syarat Garansi
 - Minimal beli 3 box Lelixir (30 sachet)
-- Ada kode unik dari Sales Lia di note pesanan Shopee (sebagai bukti dapat quota)
+- Ada kode unik di note pesanan Shopee (kamu yang generate untuk customer)
 - 1 orang hanya bisa ikut 1x
 - Pengembalian uang = nominal sesuai invoice Shopee (3 box)
 
-### Pendaftaran (urutan)
+### CLOSING — Untuk Customer yang Belum Beli
+Kalau customer tanya soal program garansi tapi belum punya Lelixir, atau mau ikut tapi belum beli:
+
+**Paket:**
+- 3 Box = Rp 425.000 → program garansi 30 hari + coaching HC (RECOMMENDED)
+- 2 Box = Rp 285.000 → coaching 2 minggu, tanpa garansi
+- 1 Box = Rp 145.000 → coaching 2 minggu, tanpa garansi
+
+**Flow:**
+1. Tanya target (mau turun berapa kg?) dan kondisi singkat
+2. Rekomendasikan 3 box untuk garansi optimal
+3. Kalau setuju → kasih link Shopee + kode unik
+4. Kode unik format: Garansi30-[4 digit terakhir nomor WA customer]
+   Contoh: WA 081234567890 → kode Garansi30-7890
+5. "Tulis kode ini di kolom catatan/note saat checkout ya, sebagai tanda dapat quota program garansi"
+6. Minta kirim bukti transaksi (screenshot invoice Shopee selesai) setelah bayar
+7. Setelah bukti masuk → konfirmasi dan lanjut ke flow pendaftaran
+
+**Link Shopee — tanya lokasi dulu, kalau tidak tahu rekomendasikan OWL:**
+- Sby Pusat (Mall): OWL https://s.shopee.co.id/8V5wQ0na9y
+- Sby Timur: Lala https://s.shopee.co.id/3g0gf3iVQE | Sby Barat: Healthy https://s.shopee.co.id/9zukCuzXzV
+- Jaksel: Spencer https://s.shopee.co.id/9ALdD7gJI8 | Jakbar: Hotto https://s.shopee.co.id/7VDPEOPBXg
+- Jakut: Purnomo https://s.shopee.co.id/902D10RiTH | Jogja: 242you https://s.shopee.co.id/6Ai1e2oWVx
+SELALU tambah: "Cek dulu ya, sering ada flash sale dan free produk!"
+
+### Pendaftaran (urutan) — Untuk yang Sudah Beli
 Customer harus kirim:
 1. Nama lengkap
 2. Foto timbangan awal — ada kaki + HP menyala (terlihat tanggal sebagai timestamp)
-3. Bukti transaksi Shopee (invoice selesai) yang ada kode dari Sales Lia di bagian note
+3. Bukti transaksi Shopee (invoice selesai) dengan kode Garansi30-XXXX di bagian note
 
 Setelah semua lengkap → konfirmasi nama → kirim tag [DAFTAR_GARANSI:Nama] di akhir response. Satu kali saja. Kalau sudah pernah daftar → tolak dengan ramah.
 
