@@ -71,6 +71,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS customers (
             nomor TEXT PRIMARY KEY,
+            nama TEXT DEFAULT '',
             first_chat TIMESTAMPTZ,
             last_chat TIMESTAMPTZ,
             chat_count INTEGER DEFAULT 0,
@@ -79,6 +80,7 @@ def init_db():
             followup_10_sent INTEGER DEFAULT 0
         )
     """)
+    c.execute("ALTER TABLE customers ADD COLUMN IF NOT EXISTS nama TEXT DEFAULT ''")
     c.execute("""
         CREATE TABLE IF NOT EXISTS garansi (
             nomor TEXT PRIMARY KEY,
@@ -92,9 +94,15 @@ def init_db():
             miss_count INTEGER DEFAULT 0,
             followup_h0_sent INTEGER DEFAULT 0,
             followup_30_sent INTEGER DEFAULT 0,
-            miss_notified_dates TEXT DEFAULT ''
+            miss_notified_dates TEXT DEFAULT '',
+            result_kg NUMERIC(4,1),
+            result_notes TEXT,
+            result_updated_at TIMESTAMPTZ
         )
     """)
+    c.execute("ALTER TABLE garansi ADD COLUMN IF NOT EXISTS result_kg NUMERIC(4,1)")
+    c.execute("ALTER TABLE garansi ADD COLUMN IF NOT EXISTS result_notes TEXT")
+    c.execute("ALTER TABLE garansi ADD COLUMN IF NOT EXISTS result_updated_at TIMESTAMPTZ")
     c.execute("""
         CREATE TABLE IF NOT EXISTS checkin_log (
             id SERIAL PRIMARY KEY,
@@ -809,46 +817,152 @@ def webhook():
 def dashboard():
     conn = get_conn()
     c = conn.cursor()
+
+    # Customers
     c.execute("""
-        SELECT nomor, first_chat AT TIME ZONE 'Asia/Jakarta', last_chat AT TIME ZONE 'Asia/Jakarta',
+        SELECT nomor, nama, first_chat AT TIME ZONE 'Asia/Jakarta',
+               last_chat AT TIME ZONE 'Asia/Jakarta',
                chat_count, followup_h1_sent, followup_3_sent, followup_10_sent
         FROM customers ORDER BY last_chat DESC
     """)
     custs = c.fetchall()
+
+    # Garansi
     c.execute("""
-        SELECT nomor, nama, tanggal_mulai, status, total_checkin, streak, miss_count, followup_30_sent
+        SELECT nomor, nama, tanggal_mulai, status, total_checkin, streak,
+               miss_count, followup_h0_sent, followup_30_sent,
+               result_kg, result_notes
         FROM garansi ORDER BY tanggal_mulai DESC
     """)
     gars = c.fetchall()
+
+    # Last 10 chat per customer (untuk modal)
+    chat_map = {}
+    for cust in custs:
+        nomor = cust[0]
+        c.execute("""
+            SELECT role, content, created_at AT TIME ZONE 'Asia/Jakarta'
+            FROM chat_history WHERE nomor = %s
+            ORDER BY created_at DESC LIMIT 10
+        """, (nomor,))
+        rows = c.fetchall()
+        chat_map[nomor] = list(reversed(rows))
+
     conn.close()
 
-    def f(n): return f"+{n[:2]} {n[2:5]}-{n[5:9]}-{n[9:]}" if len(n) >= 12 else n
+    def fmt_wa(n):
+        return f"+{n[:2]} {n[2:5]}-{n[5:9]}-{n[9:]}" if len(n) >= 12 else n
+
     def badge(s):
-        colors = {"active": "#28a745", "failed": "#dc3545", "pending": "#6c757d"}
-        col = colors.get(s, "#6c757d")
-        return f'<span style="background:{col};color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">{s.capitalize()}</span>'
-    def tick(v): return "✅" if v else "⏳"
-    def fmt_dt(v): return str(v)[:16] if v else "-"
+        cfg = {"active": ("#28a745","Aktif"), "failed": ("#dc3545","Gugur"), "completed": ("#0d6efd","Selesai")}
+        col, label = cfg.get(s, ("#6c757d", s.capitalize()))
+        return f'<span style="background:{col};color:#fff;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600">{label}</span>'
 
-    cr = "".join([
-        f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px">{f(r[0])}</td><td style="padding:10px 14px;font-size:13px">{fmt_dt(r[1])}</td><td style="padding:10px 14px;font-size:13px">{fmt_dt(r[2])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[3]}</td><td style="padding:10px 14px;text-align:center">{tick(r[4])}</td><td style="padding:10px 14px;text-align:center">{tick(r[5])}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>'
-        for i, r in enumerate(custs)
-    ])
-    gr = "".join([
-        f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px">{f(r[0])}</td><td style="padding:10px 14px;font-weight:500">{r[1]}</td><td style="padding:10px 14px;font-size:13px">{str(r[2])[:10] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center">{badge(r[3])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[4]}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[5]}</td><td style="padding:10px 14px;text-align:center;color:#dc3545;font-weight:600">{r[6]}/2</td><td style="padding:10px 14px;text-align:center">{tick(r[7])}</td></tr>'
-        for i, r in enumerate(gars)
-    ])
+    def tick(v): return '<span style="color:#28a745">✓</span>' if v else '<span style="color:#ccc">–</span>'
+    def fmt_dt(v): return str(v)[:16] if v else "–"
 
-    ac = len([g for g in gars if g[3] == 'active'])
-    fc = len([g for g in gars if g[3] == 'failed'])
+    ac = sum(1 for g in gars if g[3] == 'active')
+    fc = sum(1 for g in gars if g[3] == 'failed')
+    co = sum(1 for g in gars if g[3] == 'completed')
 
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lelixir Dashboard</title>
-    <style>body{{font-family:-apple-system,sans-serif;margin:0;padding:20px;background:#f0f2f5}}.ct{{max-width:1200px;margin:0 auto}}h1{{color:#d63384;font-size:24px}}.sub{{color:#6c757d;margin-bottom:25px;font-size:14px}}.stats{{display:flex;gap:15px;margin-bottom:25px;flex-wrap:wrap}}.sc{{background:#fff;border-radius:12px;padding:20px;flex:1;min-width:120px;box-shadow:0 1px 3px rgba(0,0,0,.1)}}.sn{{font-size:32px;font-weight:700;color:#d63384}}.sl{{font-size:13px;color:#6c757d}}.sec{{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);overflow-x:auto}}.sec h2{{font-size:18px;margin:0 0 15px}}table{{width:100%;border-collapse:collapse;min-width:600px}}th{{background:#f8f9fa;padding:10px 14px;text-align:left;font-size:12px;text-transform:uppercase;color:#6c757d;border-bottom:2px solid #dee2e6;white-space:nowrap}}td{{border-bottom:1px solid #f0f0f0}}.rf{{color:#6c757d;font-size:12px;text-align:center;margin-top:15px}}</style></head>
-    <body><div class="ct"><h1>Lelixir Dashboard</h1><p class="sub">v3.2 | {now_wib().strftime("%d/%m/%Y %H:%M")} WIB</p>
-    <div class="stats"><div class="sc"><div class="sn">{len(custs)}</div><div class="sl">Customer</div></div><div class="sc"><div class="sn">{len(gars)}</div><div class="sl">Garansi</div></div><div class="sc"><div class="sn">{ac}</div><div class="sl">Aktif</div></div><div class="sc"><div class="sn" style="color:#dc3545">{fc}</div><div class="sl">Gagal</div></div></div>
-    <div class="sec"><h2>Customer ({len(custs)})</h2><table><tr><th>WA</th><th>First Chat</th><th>Last Chat</th><th>Chat</th><th>H+1</th><th>D3</th><th>D10</th></tr>{cr}</table></div>
-    <div class="sec"><h2>Program Pasti Langsing ({len(gars)})</h2><table><tr><th>WA</th><th>Nama</th><th>Mulai</th><th>Status</th><th>Checkin</th><th>Streak</th><th>Miss</th><th>H+31</th></tr>{gr}</table></div>
-    <p class="rf">Refresh untuk data terbaru</p></div></body></html>"""
+    # Customer rows
+    cust_rows = ""
+    for i, r in enumerate(custs):
+        nomor, nama, first, last, cnt, fh1, fd3, fd10 = r
+        wa_fmt = fmt_wa(nomor)
+        nama_disp = nama or "–"
+        chats = chat_map.get(nomor, [])
+        chat_html = ""
+        for ch in chats:
+            role, content, ts = ch
+            ts_str = str(ts)[:16] if ts else ""
+            bg = "#e8f5e9" if role == "assistant" else "#f3f4f6"
+            align = "left" if role == "assistant" else "right"
+            label = "HC" if role == "assistant" else "Customer"
+            content_safe = content.replace("<","&lt;").replace(">","&gt;")[:300]
+            chat_html += f'<div style="margin:4px 0;text-align:{align}"><div style="display:inline-block;background:{bg};border-radius:8px;padding:6px 10px;max-width:85%;font-size:12px;text-align:left"><div style="font-size:10px;color:#999;margin-bottom:2px">{label} · {ts_str}</div>{content_safe}</div></div>'
+        chat_bubble = f'<button onclick="document.getElementById(\'chat-{i}\').style.display=\'block\'" style="font-size:11px;padding:3px 8px;border:1px solid #d63384;color:#d63384;background:#fff;border-radius:6px;cursor:pointer">{cnt} chat</button><div id="chat-{i}" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999" onclick="this.style.display=\'none\'"><div style="background:#fff;border-radius:12px;padding:20px;max-width:500px;margin:60px auto;max-height:70vh;overflow-y:auto" onclick="event.stopPropagation()"><div style="font-weight:600;margin-bottom:12px;color:#d63384">{wa_fmt} · {nama_disp}<span onclick="document.getElementById(\'chat-{i}\').style.display=\'none\'" style="float:right;cursor:pointer;color:#999">✕</span></div>{chat_html or "<div style=\'color:#aaa;text-align:center;padding:20px\'>Belum ada chat</div>"}</div></div>'
+        bg = "#f8f9fa" if i % 2 == 0 else "#fff"
+        cust_rows += f'<tr style="background:{bg}"><td style="padding:10px 14px;font-family:monospace;font-size:13px;white-space:nowrap">{wa_fmt}</td><td style="padding:10px 14px;font-size:13px;font-weight:500">{nama_disp}</td><td style="padding:10px 14px;font-size:12px;color:#6c757d">{fmt_dt(first)}</td><td style="padding:10px 14px;font-size:12px;color:#6c757d">{fmt_dt(last)}</td><td style="padding:10px 14px;text-align:center">{chat_bubble}</td><td style="padding:10px 14px;text-align:center">{tick(fh1)}</td><td style="padding:10px 14px;text-align:center">{tick(fd3)}</td><td style="padding:10px 14px;text-align:center">{tick(fd10)}</td></tr>'
+
+    # Garansi rows
+    gar_rows = ""
+    for i, r in enumerate(gars):
+        nomor, nama, mulai, status, total_ci, streak, miss, fh0, f30, res_kg, res_notes = r
+        wa_fmt = fmt_wa(nomor)
+        miss_color = "#dc3545" if miss >= 2 else ("#fd7e14" if miss == 1 else "#28a745")
+        result_disp = f'<span style="font-weight:700;color:#0d6efd">-{res_kg} kg</span>' if res_kg else "–"
+        if res_notes:
+            result_disp += f'<div style="font-size:11px;color:#6c757d">{res_notes[:50]}</div>'
+        bg = "#f8f9fa" if i % 2 == 0 else "#fff"
+        gar_rows += f'<tr style="background:{bg}"><td style="padding:10px 14px;font-family:monospace;font-size:13px;white-space:nowrap">{wa_fmt}</td><td style="padding:10px 14px;font-weight:600">{nama or "–"}</td><td style="padding:10px 14px;font-size:12px">{str(mulai)[:10] if mulai else "–"}</td><td style="padding:10px 14px;text-align:center">{badge(status)}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{total_ci}/30</td><td style="padding:10px 14px;text-align:center;font-weight:600;color:#0d6efd">{streak}</td><td style="padding:10px 14px;text-align:center;font-weight:700;color:{miss_color}">{miss}/2</td><td style="padding:10px 14px;text-align:center">{tick(fh0)}</td><td style="padding:10px 14px;text-align:center">{tick(f30)}</td><td style="padding:10px 14px">{result_disp}</td></tr>'
+
+    now_str = now_wib().strftime("%d/%m/%Y %H:%M")
+
+    return f"""<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lelixir HC Dashboard</title>
+<style>
+*{{box-sizing:border-box}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px;background:#f5f6fa;color:#222}}
+.ct{{max-width:1400px;margin:0 auto}}
+.header{{margin-bottom:24px}}
+.header h1{{margin:0;font-size:22px;color:#d63384;font-weight:700}}
+.header p{{margin:4px 0 0;color:#6c757d;font-size:13px}}
+.stats{{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}}
+.sc{{background:#fff;border-radius:12px;padding:18px 22px;flex:1;min-width:110px;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.sn{{font-size:28px;font-weight:700;color:#d63384;line-height:1}}
+.sl{{font-size:12px;color:#6c757d;margin-top:4px}}
+.sec{{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow-x:auto}}
+.sec h2{{font-size:15px;font-weight:700;margin:0 0 16px;color:#333}}
+table{{width:100%;border-collapse:collapse;min-width:700px}}
+th{{background:#f8f9fa;padding:9px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;border-bottom:2px solid #e9ecef;white-space:nowrap}}
+td{{padding:0;border-bottom:1px solid #f0f0f0;vertical-align:middle}}
+tr:hover td{{background:#fafafa}}
+.rf{{color:#aaa;font-size:11px;text-align:center;margin-top:16px}}
+</style>
+</head>
+<body><div class="ct">
+
+<div class="header">
+  <h1>Lelixir Health Consultant</h1>
+  <p>Dashboard · v3.3 · {now_str} WIB</p>
+</div>
+
+<div class="stats">
+  <div class="sc"><div class="sn">{len(custs)}</div><div class="sl">Total Customer</div></div>
+  <div class="sc"><div class="sn">{len(gars)}</div><div class="sl">Program Garansi</div></div>
+  <div class="sc"><div class="sn" style="color:#28a745">{ac}</div><div class="sl">Aktif</div></div>
+  <div class="sc"><div class="sn" style="color:#dc3545">{fc}</div><div class="sl">Gugur</div></div>
+  <div class="sc"><div class="sn" style="color:#0d6efd">{co}</div><div class="sl">Selesai</div></div>
+</div>
+
+<div class="sec">
+  <h2>Customer ({len(custs)})</h2>
+  <table>
+    <tr>
+      <th>No. WA</th><th>Nama</th><th>First Chat</th><th>Last Chat</th>
+      <th>Chat</th><th>H+1</th><th>D+3</th><th>D+10</th>
+    </tr>
+    {cust_rows}
+  </table>
+</div>
+
+<div class="sec">
+  <h2>Program Pasti Langsing ({len(gars)})</h2>
+  <table>
+    <tr>
+      <th>No. WA</th><th>Nama</th><th>Mulai</th><th>Status</th>
+      <th>Check-in</th><th>Streak</th><th>Miss</th>
+      <th>H+0 ✓</th><th>H+31 ✓</th><th>Hasil (kg turun)</th>
+    </tr>
+    {gar_rows}
+  </table>
+</div>
+
+<p class="rf">Klik tombol chat untuk lihat riwayat · Refresh untuk data terbaru</p>
+</div></body></html>"""
 
 @app.route("/garansi-status/<nomor>")
 def cek_gar(nomor):
@@ -857,7 +971,7 @@ def cek_gar(nomor):
 
 @app.route("/")
 def home():
-    return jsonify({"status": "active", "app": "LELIXIR v3.2", "scheduler": sched_started}), 200
+    return jsonify({"status": "active", "app": "LELIXIR v3.3", "scheduler": sched_started}), 200
 
 @app.route("/health")
 def health():
