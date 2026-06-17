@@ -1,15 +1,29 @@
 """
-LELIXIR AI AGENT v3.1
-Health Assistant — Program Pasti Langsing (revised)
+LELIXIR AI AGENT v3.2
+Health Assistant — Program Pasti Langsing
+PostgreSQL + persistent chat history
 """
 
 from flask import Flask, request, jsonify
-import requests, os, json, random, re, sqlite3, threading, time
+import requests, os, random, re, threading, time, psycopg2, psycopg2.extras
 from datetime import datetime, timedelta
+import pytz
 
+DATABASE_URL      = os.environ.get("DATABASE_URL", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 FONNTE_API_KEY    = os.environ.get("FONNTE_API_KEY", "")
 ADMIN_WA_NUMBER   = os.environ.get("ADMIN_WA_NUMBER", "628xxxxxxxxxx")
+
+WIB = pytz.timezone("Asia/Jakarta")
+
+def now_wib():
+    return datetime.now(WIB)
+
+def get_conn():
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.cursor().execute("SET timezone TO 'Asia/Jakarta'")
+    conn.commit()
+    return conn
 
 # ---------------------------------------------------------------------------
 # FOLLOW-UP MESSAGES
@@ -20,261 +34,352 @@ FOLLOWUP_H1 = [
     "Halo! Salam kenal, saya Health Assistant Lelixir.\n\nBisa bantu:\n- Konsultasi Lelixir\n- Meal plan sesuai target\n- Tips diet & olahraga simpel\n- Nutrisi & kesehatan umum\n\nAnggap aja teman yang paham gizi — tanya aja.",
     "Hi! Kemarin sempat mampir ya.\n\nSaya Health Assistant Lelixir — siap bantu soal cara pakai Lelixir, meal plan, olahraga ringan, dan nutrisi. 24 jam.\n\nAda yang mau ditanyain?"
 ]
-
 FOLLOWUP_D3 = [
     "Hai! Udah coba Lelixir?\n\nKalau awal-awal BAB lebih sering atau warna lebih gelap — itu normal, bagian dari proses detoksifikasi usus. Rutin 2 minggu biasanya mulai kerasa lebih enteng dan segar. Semangat ya!",
     "Halo! Udah 3 hari nih. Gimana rasanya?\n\nReaksi awal seperti BAB lebih sering itu tanda usus lagi bersihin diri. Lanjutin rutin ya — hasilnya mulai keliatan di minggu kedua.",
     "Hi! Sudah 3 hari pakai Lelixir. Konsistensi itu kuncinya — rutin 2 minggu pertama biasanya yang paling berasa perubahannya. Semangat!"
 ]
-
 FOLLOWUP_D10 = [
     "Hai! Gimana progress-nya?\n\nKalau stock mulai menipis, jangan sampai putus ya — konsistensi 30 hari yang bikin hasil optimal. Banyak yang susut 5-8 cm di lingkar perut setelah rutin sebulan.\n\nCek Shopee Mall OWL atau toko terdekat, sering ada flash sale.",
     "Halo! Sudah 10 hari — good job!\n\nStock mau habis? Segera re-stock biar nggak putus. Hasil terbaik di 30 hari rutin. Cek marketplace, sering ada promo.",
     "Hi! 10 hari udah lewat. Kalau stock menipis, jangan tunda re-stock ya — jeda bikin progress mundur. Cek Shopee sering ada flash sale."
 ]
-
 FOLLOWUP_G_H0 = [
     "Hai {nama}! Program Pasti Langsing kamu resmi mulai hari ini.\n\nInget ya, hari ini harus submit 3 foto:\n1. Foto makan siang (sebelum jam 14.00) + foto sachet Lelixir\n2. Foto makan malam (antara jam 17.00-21.00)\n\nBelum punya meal plan? Chat aja sekarang, langsung saya buatkan untuk 2 hari pertama.",
     "Halo {nama}! Hari pertama program dimulai nih!\n\nJangan lupa 3 foto hari ini:\n- Foto makan siang (sebelum 14.00) — sertakan foto sachet Lelixir\n- Foto makan malam (17.00-21.00)\n\nBelum ada meal plan? Minta sekarang ke saya ya, nanti saya buatkan langsung.",
     "Hi {nama}! Program Pasti Langsing mulai hari ini — semangat!\n\nTarget hari ini: 3 foto (makan siang + sachet Lelixir + makan malam).\n\nMau minta meal plan untuk hari ini dan besok? Chat aja."
 ]
-
 FOLLOWUP_G30 = [
     "Hai {nama}!\n\n30 hari udah selesai — selamat, itu bukan hal yang gampang!\n\nGimana hasilnya? Turun berapa kg? Kirim foto timbangan terbaru ya (ada HP menyala sebagai timestamp).\n\nFYI — setiap 3 bulan kami adain undian untuk peserta dengan penurunan BB terbanyak. Hadiahnya 3 box Lelixir gratis atau uang Rp 500.000. Jadi catat progress kamu ya!",
     "Halo {nama}! Program 30 hari selesai!\n\nCerita dong — turun berapa kg dan berapa cm? Kirim foto timbangan terbaru kalau bisa (dengan timestamp HP).\n\nInfo: setiap 3 bulan ada undian peserta dengan penurunan terbanyak — hadiahnya 3 box Lelixir atau Rp 500K. Progress kamu masuk hitungan ya."
 ]
-
 GARANSI_MISS = [
     "Hai {nama},\n\nKemarin foto belum masuk ya. Ini terhitung dispensasi ke-{miss} dari 2 yang diizinkan dalam program.\n\nSantai aja, masih bisa lanjut — yang penting besok submit 3 foto ya. Kalau butuh reminder atau support, chat aja.",
     "Halo {nama}, kemarin missed upload ya.\n\nIni dispensasi ke-{miss}/2. Masih aman lanjut program, tapi jangan sampai terulang lagi ya. Besok pastikan submit 3 foto (makan siang + sachet + makan malam). Semangat!"
 ]
-
 GARANSI_GUGUR = [
     "Hai {nama},\n\nSayang banget, dispensasi sudah habis (3x missed). Program garansi resmi berakhir.\n\nTapi kamu masih bisa konsultasi kapan aja di sini — dan tetap rutin Lelixir ya. Banyak yang tetap turun meski tanpa program formal, karena pola makannya udah berubah. Semangat terus!"
 ]
 
-DB_PATH = "lelixir_customers.db"
-
 # ---------------------------------------------------------------------------
-# DATABASE
+# DATABASE INIT
 # ---------------------------------------------------------------------------
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS customers (
-        nomor TEXT PRIMARY KEY,
-        first_chat TEXT,
-        last_chat TEXT,
-        chat_count INTEGER DEFAULT 0,
-        followup_h1_sent INTEGER DEFAULT 0,
-        followup_3_sent INTEGER DEFAULT 0,
-        followup_10_sent INTEGER DEFAULT 0
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS garansi (
-        nomor TEXT PRIMARY KEY,
-        nama TEXT,
-        tanggal_daftar TEXT,
-        tanggal_mulai TEXT,
-        status TEXT DEFAULT 'pending',
-        total_checkin INTEGER DEFAULT 0,
-        last_checkin_date TEXT,
-        streak INTEGER DEFAULT 0,
-        miss_count INTEGER DEFAULT 0,
-        followup_h0_sent INTEGER DEFAULT 0,
-        followup_30_sent INTEGER DEFAULT 0,
-        miss_notified_dates TEXT DEFAULT ''
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS checkin_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nomor TEXT,
-        tanggal TEXT,
-        jumlah_foto INTEGER DEFAULT 0,
-        timestamp TEXT
-    )""")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS customers (
+            nomor TEXT PRIMARY KEY,
+            first_chat TIMESTAMPTZ,
+            last_chat TIMESTAMPTZ,
+            chat_count INTEGER DEFAULT 0,
+            followup_h1_sent INTEGER DEFAULT 0,
+            followup_3_sent INTEGER DEFAULT 0,
+            followup_10_sent INTEGER DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS garansi (
+            nomor TEXT PRIMARY KEY,
+            nama TEXT,
+            tanggal_daftar TIMESTAMPTZ,
+            tanggal_mulai DATE,
+            status TEXT DEFAULT 'active',
+            total_checkin INTEGER DEFAULT 0,
+            last_checkin_date DATE,
+            streak INTEGER DEFAULT 0,
+            miss_count INTEGER DEFAULT 0,
+            followup_h0_sent INTEGER DEFAULT 0,
+            followup_30_sent INTEGER DEFAULT 0,
+            miss_notified_dates TEXT DEFAULT ''
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS checkin_log (
+            id SERIAL PRIMARY KEY,
+            nomor TEXT,
+            tanggal DATE,
+            jumlah_foto INTEGER DEFAULT 0,
+            timestamp TIMESTAMPTZ,
+            UNIQUE(nomor, tanggal)
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id SERIAL PRIMARY KEY,
+            nomor TEXT,
+            role TEXT,
+            content TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_nomor ON chat_history(nomor, created_at)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_checkin_nomor ON checkin_log(nomor, tanggal)")
     conn.commit()
     conn.close()
+    print("[DB] Tables ready")
+
+# ---------------------------------------------------------------------------
+# CUSTOMERS
+# ---------------------------------------------------------------------------
 
 def catat_customer(nomor):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    now = datetime.now().isoformat()
-    c.execute("SELECT chat_count FROM customers WHERE nomor=?", (nomor,))
-    row = c.fetchone()
-    if row:
-        c.execute("UPDATE customers SET last_chat=?, chat_count=? WHERE nomor=?", (now, row[0]+1, nomor))
-    else:
-        c.execute("INSERT INTO customers VALUES (?,?,?,1,0,0,0)", (nomor, now, now))
+    now = now_wib()
+    c.execute("""
+        INSERT INTO customers (nomor, first_chat, last_chat, chat_count)
+        VALUES (%s, %s, %s, 1)
+        ON CONFLICT (nomor) DO UPDATE
+        SET last_chat = %s, chat_count = customers.chat_count + 1
+    """, (nomor, now, now, now))
     conn.commit()
     conn.close()
 
+# ---------------------------------------------------------------------------
+# GARANSI
+# ---------------------------------------------------------------------------
+
 def get_garansi(nomor):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT * FROM garansi WHERE nomor=?", (nomor,))
+    conn = get_conn()
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    c.execute("SELECT * FROM garansi WHERE nomor = %s", (nomor,))
     row = c.fetchone()
     conn.close()
-    if not row:
-        return None
-    return {
-        "nomor": row[0], "nama": row[1], "tanggal_daftar": row[2],
-        "tanggal_mulai": row[3], "status": row[4], "total_checkin": row[5],
-        "last_checkin_date": row[6], "streak": row[7], "miss_count": row[8],
-        "followup_h0_sent": row[9], "followup_30_sent": row[10],
-        "miss_notified_dates": row[11] or ""
-    }
+    return dict(row) if row else None
 
 def has_garansi(nomor):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT status FROM garansi WHERE nomor=?", (nomor,))
+    c.execute("SELECT 1 FROM garansi WHERE nomor = %s", (nomor,))
     row = c.fetchone()
     conn.close()
     return row is not None
 
 def reg_garansi(nomor, nama):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    now = datetime.now().isoformat()
-    mulai = (datetime.now() + timedelta(days=1)).isoformat()[:10]
-    c.execute("""INSERT INTO garansi 
-        (nomor,nama,tanggal_daftar,tanggal_mulai,status,total_checkin,last_checkin_date,streak,miss_count,followup_h0_sent,followup_30_sent,miss_notified_dates)
-        VALUES (?,?,?,?,'active',0,'',0,0,0,0,'')
-        ON CONFLICT(nomor) DO UPDATE SET
-            nama=?, tanggal_daftar=?, tanggal_mulai=?, status='active',
-            total_checkin=0, last_checkin_date='', streak=0,
-            miss_count=0, followup_h0_sent=0, followup_30_sent=0, miss_notified_dates=''
-    """, (nomor, nama, now, mulai, nama, now, mulai))
+    now = now_wib()
+    mulai = (now_wib() + timedelta(days=1)).date()
+    c.execute("""
+        INSERT INTO garansi
+            (nomor, nama, tanggal_daftar, tanggal_mulai, status, total_checkin,
+             last_checkin_date, streak, miss_count, followup_h0_sent, followup_30_sent, miss_notified_dates)
+        VALUES (%s, %s, %s, %s, 'active', 0, NULL, 0, 0, 0, 0, '')
+        ON CONFLICT (nomor) DO UPDATE SET
+            nama = EXCLUDED.nama,
+            tanggal_daftar = EXCLUDED.tanggal_daftar,
+            tanggal_mulai = EXCLUDED.tanggal_mulai,
+            status = 'active',
+            total_checkin = 0,
+            last_checkin_date = NULL,
+            streak = 0,
+            miss_count = 0,
+            followup_h0_sent = 0,
+            followup_30_sent = 0,
+            miss_notified_dates = ''
+    """, (nomor, nama, now, mulai))
     conn.commit()
     conn.close()
 
 def checkin(nomor):
-    """Record a photo submission. Returns current photo count for today."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    td = datetime.now().isoformat()[:10]
-    now = datetime.now().isoformat()
-    c.execute("SELECT jumlah_foto FROM checkin_log WHERE nomor=? AND tanggal=?", (nomor, td))
-    row = c.fetchone()
-    if row:
-        nc = row[0] + 1
-        c.execute("UPDATE checkin_log SET jumlah_foto=?, timestamp=? WHERE nomor=? AND tanggal=?", (nc, now, nomor, td))
-    else:
-        nc = 1
-        c.execute("INSERT INTO checkin_log (nomor,tanggal,jumlah_foto,timestamp) VALUES (?,?,1,?)", (nomor, td, now))
+    td = now_wib().date()
+    now = now_wib()
+    c.execute("""
+        INSERT INTO checkin_log (nomor, tanggal, jumlah_foto, timestamp)
+        VALUES (%s, %s, 1, %s)
+        ON CONFLICT (nomor, tanggal) DO UPDATE
+        SET jumlah_foto = checkin_log.jumlah_foto + 1, timestamp = %s
+        RETURNING jumlah_foto
+    """, (nomor, td, now, now))
+    nc = c.fetchone()[0]
+
     g = get_garansi(nomor)
     if g and g["status"] == "active":
         ld = g["last_checkin_date"]
-        yesterday = (datetime.now() - timedelta(days=1)).isoformat()[:10]
+        yesterday = (now_wib() - timedelta(days=1)).date()
         if ld == td:
             s = g["streak"]
-        elif ld == yesterday or ld == "":
+        elif ld is None or ld == yesterday:
             s = g["streak"] + 1
         else:
             s = 1
-        c.execute("UPDATE garansi SET total_checkin=?, last_checkin_date=?, streak=? WHERE nomor=?",
-                  (g["total_checkin"] + 1, td, s, nomor))
+        c.execute("""
+            UPDATE garansi SET total_checkin = total_checkin + 1,
+            last_checkin_date = %s, streak = %s WHERE nomor = %s
+        """, (td, s, nomor))
+
     conn.commit()
     conn.close()
     return nc
+
+# ---------------------------------------------------------------------------
+# CHAT HISTORY (persistent)
+# ---------------------------------------------------------------------------
+
+MAKS_RIWAYAT = 20
+
+def get_history(nomor):
+    conn = get_conn()
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    c.execute("""
+        SELECT role, content FROM chat_history
+        WHERE nomor = %s
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (nomor, MAKS_RIWAYAT))
+    rows = c.fetchall()
+    conn.close()
+    return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+def save_message(nomor, role, content):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO chat_history (nomor, role, content, created_at)
+        VALUES (%s, %s, %s, %s)
+    """, (nomor, role, content, now_wib()))
+    # Cleanup old messages beyond limit
+    c.execute("""
+        DELETE FROM chat_history WHERE id IN (
+            SELECT id FROM chat_history
+            WHERE nomor = %s
+            ORDER BY created_at DESC
+            OFFSET %s
+        )
+    """, (nomor, MAKS_RIWAYAT))
+    conn.commit()
+    conn.close()
+
+def cleanup_old_history():
+    """Hapus chat history lebih dari 7 hari."""
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM chat_history WHERE created_at < NOW() - INTERVAL '7 days'")
+    conn.commit()
+    conn.close()
 
 # ---------------------------------------------------------------------------
 # FOLLOW-UP QUERIES
 # ---------------------------------------------------------------------------
 
 def get_fu_h1():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    yesterday = (datetime.now() - timedelta(days=1)).isoformat()[:10]
-    c.execute("SELECT nomor FROM customers WHERE date(first_chat)=? AND chat_count<=3 AND followup_h1_sent=0", (yesterday,))
+    yesterday = (now_wib() - timedelta(days=1)).date()
+    c.execute("""
+        SELECT nomor FROM customers
+        WHERE DATE(first_chat AT TIME ZONE 'Asia/Jakarta') = %s
+        AND chat_count <= 3 AND followup_h1_sent = 0
+    """, (yesterday,))
     r = [row[0] for row in c.fetchall()]
     conn.close()
     return r
 
 def get_fu(hari, field):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    t = (datetime.now() - timedelta(days=hari)).isoformat()[:10]
-    p = (datetime.now() - timedelta(days=hari+1)).isoformat()[:10]
-    c.execute(f"SELECT nomor FROM customers WHERE date(first_chat)<=? AND date(first_chat)>=? AND {field}=0", (t, p))
+    target = (now_wib() - timedelta(days=hari)).date()
+    prev   = (now_wib() - timedelta(days=hari+1)).date()
+    c.execute(f"""
+        SELECT nomor FROM customers
+        WHERE DATE(first_chat AT TIME ZONE 'Asia/Jakarta') <= %s
+        AND DATE(first_chat AT TIME ZONE 'Asia/Jakarta') >= %s
+        AND {field} = 0
+    """, (target, prev))
     r = [row[0] for row in c.fetchall()]
     conn.close()
     return r
 
 def mark_fu(nomor, field):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute(f"UPDATE customers SET {field}=1 WHERE nomor=?", (nomor,))
+    c.execute(f"UPDATE customers SET {field} = 1 WHERE nomor = %s", (nomor,))
     conn.commit()
     conn.close()
 
 def get_garansi_h0():
-    """Peserta yang program mulai HARI INI dan belum dapat reminder H0."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    today = datetime.now().isoformat()[:10]
-    c.execute("SELECT nomor, nama FROM garansi WHERE tanggal_mulai=? AND status='active' AND followup_h0_sent=0", (today,))
+    today = now_wib().date()
+    c.execute("""
+        SELECT nomor, nama FROM garansi
+        WHERE tanggal_mulai = %s AND status = 'active' AND followup_h0_sent = 0
+    """, (today,))
     r = [(row[0], row[1]) for row in c.fetchall()]
     conn.close()
     return r
 
 def mark_garansi_h0(nomor):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute("UPDATE garansi SET followup_h0_sent=1 WHERE nomor=?", (nomor,))
+    c.execute("UPDATE garansi SET followup_h0_sent = 1 WHERE nomor = %s", (nomor,))
     conn.commit()
     conn.close()
 
 def get_g30():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    t = (datetime.now() - timedelta(days=30)).isoformat()[:10]
-    p = (datetime.now() - timedelta(days=31)).isoformat()[:10]
-    c.execute("SELECT nomor, nama FROM garansi WHERE date(tanggal_mulai)<=? AND date(tanggal_mulai)>=? AND status='active' AND followup_30_sent=0", (t, p))
+    target = (now_wib() - timedelta(days=30)).date()
+    prev   = (now_wib() - timedelta(days=31)).date()
+    c.execute("""
+        SELECT nomor, nama FROM garansi
+        WHERE tanggal_mulai <= %s AND tanggal_mulai >= %s
+        AND status = 'active' AND followup_30_sent = 0
+    """, (target, prev))
     r = [(row[0], row[1]) for row in c.fetchall()]
     conn.close()
     return r
 
 def mark_g30(nomor):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute("UPDATE garansi SET followup_30_sent=1 WHERE nomor=?", (nomor,))
+    c.execute("UPDATE garansi SET followup_30_sent = 1 WHERE nomor = %s", (nomor,))
     conn.commit()
     conn.close()
 
 def check_miss():
-    """
-    Cek peserta aktif yang kemarin submit < 3 foto.
-    Tambah miss_count. Kalau miss_count >= 3, gugurkan program.
-    Return: list (nomor, nama, miss_count, gugur_bool)
-    """
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    yesterday = (datetime.now() - timedelta(days=1)).isoformat()[:10]
-    c.execute("SELECT nomor, nama, miss_count, miss_notified_dates, tanggal_mulai FROM garansi WHERE status='active'")
+    conn = get_conn()
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    yesterday = (now_wib() - timedelta(days=1)).date()
+    c.execute("""
+        SELECT nomor, nama, miss_count, miss_notified_dates, tanggal_mulai
+        FROM garansi WHERE status = 'active'
+    """)
     rows = c.fetchall()
     results = []
-    for nomor, nama, miss_count, notified_dates, tanggal_mulai in rows:
-        # hanya cek kalau program sudah mulai
-        if tanggal_mulai > yesterday:
+    for row in rows:
+        nomor = row["nomor"]
+        nama  = row["nama"]
+        miss_count = row["miss_count"]
+        notified   = row["miss_notified_dates"] or ""
+        mulai      = row["tanggal_mulai"]
+
+        if mulai > yesterday:
             continue
-        # sudah dinotif kemarin?
-        if yesterday in (notified_dates or ""):
+        if str(yesterday) in notified:
             continue
-        c.execute("SELECT jumlah_foto FROM checkin_log WHERE nomor=? AND tanggal=?", (nomor, yesterday))
-        row = c.fetchone()
-        foto = row[0] if row else 0
+
+        c2 = conn.cursor()
+        c2.execute("SELECT jumlah_foto FROM checkin_log WHERE nomor = %s AND tanggal = %s", (nomor, yesterday))
+        foto_row = c2.fetchone()
+        foto = foto_row[0] if foto_row else 0
+
         if foto < 3:
-            new_miss = miss_count + 1
-            new_dates = (notified_dates or "") + "," + yesterday if notified_dates else yesterday
+            new_miss  = miss_count + 1
+            new_dates = (notified + "," + str(yesterday)) if notified else str(yesterday)
             if new_miss >= 3:
-                c.execute("UPDATE garansi SET status='failed', miss_count=?, miss_notified_dates=? WHERE nomor=?",
-                          (new_miss, new_dates, nomor))
+                c2.execute("UPDATE garansi SET status='failed', miss_count=%s, miss_notified_dates=%s WHERE nomor=%s",
+                           (new_miss, new_dates, nomor))
                 results.append((nomor, nama, new_miss, True))
             else:
-                c.execute("UPDATE garansi SET miss_count=?, miss_notified_dates=? WHERE nomor=?",
-                          (new_miss, new_dates, nomor))
+                c2.execute("UPDATE garansi SET miss_count=%s, miss_notified_dates=%s WHERE nomor=%s",
+                           (new_miss, new_dates, nomor))
                 results.append((nomor, nama, new_miss, False))
+
     conn.commit()
     conn.close()
     return results
@@ -308,11 +413,10 @@ def scheduler():
     print("[SCHED] Started")
     while True:
         try:
-            now = datetime.now()
+            now = now_wib()
             if 9 <= now.hour <= 20:
-                print(f"[SCHED] {now.strftime('%Y-%m-%d %H:%M')}")
+                print(f"[SCHED] {now.strftime('%Y-%m-%d %H:%M')} WIB")
 
-                # Miss check — jam 9 pagi
                 if now.hour == 9:
                     for nomor, nama, miss_count, gugur in check_miss():
                         if gugur:
@@ -321,32 +425,28 @@ def scheduler():
                             msg = random.choice(GARANSI_MISS).replace("{nama}", nama).replace("{miss}", str(miss_count))
                         send_wa(nomor, msg)
                         time.sleep(3)
+                    cleanup_old_history()
 
-                # H0 reminder — program mulai hari ini
                 for nomor, nama in get_garansi_h0():
                     send_wa(nomor, random.choice(FOLLOWUP_G_H0).replace("{nama}", nama))
                     mark_garansi_h0(nomor)
                     time.sleep(3)
 
-                # H+1 follow-up customer biasa
                 for nomor in get_fu_h1():
                     send_wa(nomor, random.choice(FOLLOWUP_H1))
                     mark_fu(nomor, "followup_h1_sent")
                     time.sleep(3)
 
-                # D+3
                 for nomor in get_fu(3, "followup_3_sent"):
                     send_wa(nomor, random.choice(FOLLOWUP_D3))
                     mark_fu(nomor, "followup_3_sent")
                     time.sleep(3)
 
-                # D+10
                 for nomor in get_fu(10, "followup_10_sent"):
                     send_wa(nomor, random.choice(FOLLOWUP_D10))
                     mark_fu(nomor, "followup_10_sent")
                     time.sleep(3)
 
-                # H+31 (program selesai)
                 for nomor, nama in get_g30():
                     send_wa(nomor, random.choice(FOLLOWUP_G30).replace("{nama}", nama))
                     mark_g30(nomor)
@@ -360,7 +460,7 @@ def scheduler():
 # SYSTEM PROMPT
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """# LELIXIR HEALTH ASSISTANT v3.1
+SYSTEM_PROMPT = """# LELIXIR HEALTH ASSISTANT v3.2
 
 ## IDENTITAS & PERSONA
 Kamu adalah Health Consultant (HC) dari Lelixir. Nama: Health Assistant Lelixir.
@@ -567,8 +667,6 @@ D29-30: Ulangi menu favorit dari W1-W4, atau variasi baru dari database.
 # ---------------------------------------------------------------------------
 
 app = Flask(__name__)
-riwayat_chat = {}
-MAKS_RIWAYAT = 20
 init_db()
 
 sched_started = False
@@ -581,24 +679,20 @@ def start_sched():
 start_sched()
 
 def ask_claude(nomor, pesan):
-    if nomor not in riwayat_chat:
-        riwayat_chat[nomor] = []
-    riwayat = riwayat_chat[nomor]
+    riwayat = get_history(nomor)
 
-    # Context garansi
     g = get_garansi(nomor)
     ctx = ""
     if g and g["status"] == "active":
         ctx = f"\n[GARANSI AKTIF] Nama: {g['nama']}, mulai: {g['tanggal_mulai']}, checkin: {g['total_checkin']}, streak: {g['streak']}, miss: {g['miss_count']}/2."
     elif g and g["status"] == "failed":
         ctx = f"\n[GARANSI GUGUR] Nama: {g['nama']}, miss: {g['miss_count']}x."
-    if has_garansi(nomor) and (not g or g["status"] not in ["active", "failed"]):
-        ctx += "\n[INFO] Customer sudah pernah ikut program garansi sebelumnya."
+    elif has_garansi(nomor):
+        ctx = "\n[INFO] Customer sudah pernah ikut program garansi."
 
-    riwayat.append({"role": "user", "content": pesan + ctx})
-    if len(riwayat) > MAKS_RIWAYAT:
-        riwayat = riwayat[-MAKS_RIWAYAT:]
-        riwayat_chat[nomor] = riwayat
+    pesan_with_ctx = pesan + ctx
+    save_message(nomor, "user", pesan_with_ctx)
+    riwayat.append({"role": "user", "content": pesan_with_ctx})
 
     for _ in range(3):
         try:
@@ -619,16 +713,17 @@ def ask_claude(nomor, pesan):
             )
             if r.status_code == 200:
                 j = r.json()["content"][0]["text"]
-                riwayat.append({"role": "assistant", "content": j})
-                riwayat_chat[nomor] = riwayat
+                save_message(nomor, "assistant", j)
                 return j
             elif r.status_code == 529:
                 time.sleep(5)
             else:
                 print(f"[ERR] {r.status_code}: {r.text}")
                 break
-        except:
+        except Exception as e:
+            print(f"[ERR Claude] {e}")
             time.sleep(3)
+
     return "Maaf, sistem lagi sibuk. Coba lagi dalam 1-2 menit ya."
 
 def proc_tag(nomor, jawaban):
@@ -643,10 +738,11 @@ def proc_tag(nomor, jawaban):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json or request.form.to_dict()
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] === PESAN MASUK ===")
+    data  = request.json or request.form.to_dict()
     nomor = data.get("sender", "")
     pesan = data.get("message", "")
+
+    print(f"\n[{now_wib().strftime('%H:%M:%S')}] {nomor}: {pesan[:80]}")
 
     if not nomor or not pesan or "@g.us" in nomor:
         return jsonify({"s": "ignored"}), 200
@@ -670,20 +766,25 @@ def webhook():
         send_wa(nomor, "Foto diterima ya. Saya terbatas baca file di sini, kalau ada pertanyaan boleh diketik.")
         return jsonify({"s": "non-text"}), 200
 
-    print(f"[INFO] {nomor}: {pesan}")
     jawaban = ask_claude(nomor, pesan)
     jawaban = proc_tag(nomor, jawaban)
-    print(f"[INFO] Reply: {jawaban[:100]}...")
     send_wa(nomor, jawaban)
     return jsonify({"s": "replied"}), 200
 
 @app.route("/dashboard")
 def dashboard():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT nomor,first_chat,last_chat,chat_count,followup_h1_sent,followup_3_sent,followup_10_sent FROM customers ORDER BY last_chat DESC")
+    c.execute("""
+        SELECT nomor, first_chat AT TIME ZONE 'Asia/Jakarta', last_chat AT TIME ZONE 'Asia/Jakarta',
+               chat_count, followup_h1_sent, followup_3_sent, followup_10_sent
+        FROM customers ORDER BY last_chat DESC
+    """)
     custs = c.fetchall()
-    c.execute("SELECT nomor,nama,tanggal_mulai,status,total_checkin,streak,miss_count,followup_30_sent FROM garansi ORDER BY tanggal_mulai DESC")
+    c.execute("""
+        SELECT nomor, nama, tanggal_mulai, status, total_checkin, streak, miss_count, followup_30_sent
+        FROM garansi ORDER BY tanggal_mulai DESC
+    """)
     gars = c.fetchall()
     conn.close()
 
@@ -693,13 +794,14 @@ def dashboard():
         col = colors.get(s, "#6c757d")
         return f'<span style="background:{col};color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">{s.capitalize()}</span>'
     def tick(v): return "✅" if v else "⏳"
+    def fmt_dt(v): return str(v)[:16] if v else "-"
 
     cr = "".join([
-        f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px">{f(r[0])}</td><td style="padding:10px 14px;font-size:13px">{r[1][:16]}</td><td style="padding:10px 14px;font-size:13px">{r[2][:16]}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[3]}</td><td style="padding:10px 14px;text-align:center">{tick(r[4])}</td><td style="padding:10px 14px;text-align:center">{tick(r[5])}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>'
+        f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px">{f(r[0])}</td><td style="padding:10px 14px;font-size:13px">{fmt_dt(r[1])}</td><td style="padding:10px 14px;font-size:13px">{fmt_dt(r[2])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[3]}</td><td style="padding:10px 14px;text-align:center">{tick(r[4])}</td><td style="padding:10px 14px;text-align:center">{tick(r[5])}</td><td style="padding:10px 14px;text-align:center">{tick(r[6])}</td></tr>'
         for i, r in enumerate(custs)
     ])
     gr = "".join([
-        f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px">{f(r[0])}</td><td style="padding:10px 14px;font-weight:500">{r[1]}</td><td style="padding:10px 14px;font-size:13px">{r[2][:10] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center">{badge(r[3])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[4]}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[5]}</td><td style="padding:10px 14px;text-align:center;color:#dc3545;font-weight:600">{r[6]}/2</td><td style="padding:10px 14px;text-align:center">{tick(r[7])}</td></tr>'
+        f'<tr style="background:{"#f8f9fa" if i%2==0 else "#fff"}"><td style="padding:10px 14px;font-family:monospace;font-size:14px">{f(r[0])}</td><td style="padding:10px 14px;font-weight:500">{r[1]}</td><td style="padding:10px 14px;font-size:13px">{str(r[2])[:10] if r[2] else "-"}</td><td style="padding:10px 14px;text-align:center">{badge(r[3])}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[4]}</td><td style="padding:10px 14px;text-align:center;font-weight:600">{r[5]}</td><td style="padding:10px 14px;text-align:center;color:#dc3545;font-weight:600">{r[6]}/2</td><td style="padding:10px 14px;text-align:center">{tick(r[7])}</td></tr>'
         for i, r in enumerate(gars)
     ])
 
@@ -708,7 +810,7 @@ def dashboard():
 
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lelixir Dashboard</title>
     <style>body{{font-family:-apple-system,sans-serif;margin:0;padding:20px;background:#f0f2f5}}.ct{{max-width:1200px;margin:0 auto}}h1{{color:#d63384;font-size:24px}}.sub{{color:#6c757d;margin-bottom:25px;font-size:14px}}.stats{{display:flex;gap:15px;margin-bottom:25px;flex-wrap:wrap}}.sc{{background:#fff;border-radius:12px;padding:20px;flex:1;min-width:120px;box-shadow:0 1px 3px rgba(0,0,0,.1)}}.sn{{font-size:32px;font-weight:700;color:#d63384}}.sl{{font-size:13px;color:#6c757d}}.sec{{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);overflow-x:auto}}.sec h2{{font-size:18px;margin:0 0 15px}}table{{width:100%;border-collapse:collapse;min-width:600px}}th{{background:#f8f9fa;padding:10px 14px;text-align:left;font-size:12px;text-transform:uppercase;color:#6c757d;border-bottom:2px solid #dee2e6;white-space:nowrap}}td{{border-bottom:1px solid #f0f0f0}}.rf{{color:#6c757d;font-size:12px;text-align:center;margin-top:15px}}</style></head>
-    <body><div class="ct"><h1>Lelixir Dashboard</h1><p class="sub">v3.1 | {datetime.now().strftime("%d/%m/%Y %H:%M")} WIB</p>
+    <body><div class="ct"><h1>Lelixir Dashboard</h1><p class="sub">v3.2 | {now_wib().strftime("%d/%m/%Y %H:%M")} WIB</p>
     <div class="stats"><div class="sc"><div class="sn">{len(custs)}</div><div class="sl">Customer</div></div><div class="sc"><div class="sn">{len(gars)}</div><div class="sl">Garansi</div></div><div class="sc"><div class="sn">{ac}</div><div class="sl">Aktif</div></div><div class="sc"><div class="sn" style="color:#dc3545">{fc}</div><div class="sl">Gagal</div></div></div>
     <div class="sec"><h2>Customer ({len(custs)})</h2><table><tr><th>WA</th><th>First Chat</th><th>Last Chat</th><th>Chat</th><th>H+1</th><th>D3</th><th>D10</th></tr>{cr}</table></div>
     <div class="sec"><h2>Program Pasti Langsing ({len(gars)})</h2><table><tr><th>WA</th><th>Nama</th><th>Mulai</th><th>Status</th><th>Checkin</th><th>Streak</th><th>Miss</th><th>H+31</th></tr>{gr}</table></div>
@@ -721,11 +823,11 @@ def cek_gar(nomor):
 
 @app.route("/")
 def home():
-    return jsonify({"status": "active", "app": "LELIXIR v3.1", "scheduler": sched_started}), 200
+    return jsonify({"status": "active", "app": "LELIXIR v3.2", "scheduler": sched_started}), 200
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "healthy", "scheduler": sched_started}), 200
+    return jsonify({"status": "healthy", "scheduler": sched_started, "time_wib": now_wib().strftime("%Y-%m-%d %H:%M:%S")}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
