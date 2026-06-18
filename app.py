@@ -505,8 +505,11 @@ Kalau customer mau daftar program garansi, SELALU tanya dulu: "Sudah punya 3 box
 ---
 
 **PATH A — Sudah beli:**
-Tanya dulu: beli di mana? Kalau bukan di OWL Shopee Mall → **tidak bisa ikut program garansi**.
-Sampaikan dengan ramah: "Untuk program garansi, pembelian harus di toko resmi OWL di Shopee ya — ini untuk memastikan keaslian produk dan validasi invoice-nya."
+Tanya dulu: beli di mana? Kalau bukan di OWL Shopee Mall → **tidak bisa ikut program garansi**, tapi tetap dapat:
+- Konsultasi gratis 2 minggu (meal plan, tips, nanya-nanya bebas)
+- Support dari HC kapan aja
+
+Sampaikan dengan ramah: "Sayang banget, untuk program garansi uang kembali memang harus beli di OWL ya — tapi tenang, kamu tetap bisa konsultasi bebas sama saya selama 2 minggu, minta meal plan, tanya soal pola makan, dll. Kalau next order bisa coba di OWL biar bisa ikut garansinya."
 Kalau sudah beli di OWL, minta:
 1. Bukti invoice Shopee dari OWL (screenshot order selesai) + kode unik dari Sales Lia di bagian note pesanan
 2. Nama lengkap
@@ -882,7 +885,8 @@ def dashboard():
             label = "HC" if role == "assistant" else "Customer"
             content_safe = content.replace("<","&lt;").replace(">","&gt;")[:300]
             chat_html += f'<div style="margin:4px 0;text-align:{align}"><div style="display:inline-block;background:{bg};border-radius:8px;padding:6px 10px;max-width:85%;font-size:12px;text-align:left"><div style="font-size:10px;color:#999;margin-bottom:2px">{label} · {ts_str}</div>{content_safe}</div></div>'
-        chat_bubble = f'<button onclick="document.getElementById(\'chat-{i}\').style.display=\'block\'" style="font-size:11px;padding:3px 8px;border:1px solid #d63384;color:#d63384;background:#fff;border-radius:6px;cursor:pointer">{cnt} chat</button><div id="chat-{i}" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999" onclick="this.style.display=\'none\'"><div style="background:#fff;border-radius:12px;padding:20px;max-width:500px;margin:60px auto;max-height:70vh;overflow-y:auto" onclick="event.stopPropagation()"><div style="font-weight:600;margin-bottom:12px;color:#d63384">{wa_fmt} · {nama_disp}<span onclick="document.getElementById(\'chat-{i}\').style.display=\'none\'" style="float:right;cursor:pointer;color:#999">✕</span></div>{chat_html or "<div style=\'color:#aaa;text-align:center;padding:20px\'>Belum ada chat</div>"}</div></div>'
+        reset_btn = f'<button onclick="if(confirm(\'Reset semua data {wa_fmt}?\')){{fetch(\'/reset-customer/{nomor}\',{{method:\'POST\'}}).then(()=>location.reload())}}" style="font-size:11px;padding:3px 8px;border:1px solid #dc3545;color:#dc3545;background:#fff;border-radius:6px;cursor:pointer;margin-left:6px">Reset</button>'
+        chat_bubble = f'<button onclick="document.getElementById(\'chat-{i}\').style.display=\'block\'" style="font-size:11px;padding:3px 8px;border:1px solid #d63384;color:#d63384;background:#fff;border-radius:6px;cursor:pointer">{cnt} chat</button>{reset_btn}<div id="chat-{i}" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999" onclick="this.style.display=\'none\'"><div style="background:#fff;border-radius:12px;padding:20px;max-width:500px;margin:60px auto;max-height:70vh;overflow-y:auto" onclick="event.stopPropagation()"><div style="font-weight:600;margin-bottom:12px;color:#d63384">{wa_fmt} · {nama_disp}<span onclick="document.getElementById(\'chat-{i}\').style.display=\'none\'" style="float:right;cursor:pointer;color:#999">✕</span></div>{chat_html or "<div style=\'color:#aaa;text-align:center;padding:20px\'>Belum ada chat</div>"}</div></div>'
         bg = "#f8f9fa" if i % 2 == 0 else "#fff"
         cust_rows += f'<tr style="background:{bg}"><td style="padding:10px 14px;font-family:monospace;font-size:13px;white-space:nowrap">{wa_fmt}</td><td style="padding:10px 14px;font-size:13px;font-weight:500">{nama_disp}</td><td style="padding:10px 14px;font-size:12px;color:#6c757d">{fmt_dt(first)}</td><td style="padding:10px 14px;font-size:12px;color:#6c757d">{fmt_dt(last)}</td><td style="padding:10px 14px;text-align:center">{chat_bubble}</td><td style="padding:10px 14px;text-align:center">{tick(fh1)}</td><td style="padding:10px 14px;text-align:center">{tick(fd3)}</td><td style="padding:10px 14px;text-align:center">{tick(fd10)}</td></tr>'
 
@@ -965,7 +969,24 @@ tr:hover td{{background:#fafafa}}
 <p class="rf">Klik tombol chat untuk lihat riwayat · Refresh untuk data terbaru</p>
 </div></body></html>"""
 
-@app.route("/garansi-status/<nomor>")
+@app.route("/reset-customer/<nomor>", methods=["POST"])
+def reset_customer(nomor):
+    """Reset semua data customer by nomor WA."""
+    try:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("DELETE FROM chat_history WHERE nomor = %s", (nomor,))
+        c.execute("DELETE FROM checkin_log WHERE nomor = %s", (nomor,))
+        c.execute("DELETE FROM garansi WHERE nomor = %s", (nomor,))
+        c.execute("DELETE FROM customers WHERE nomor = %s", (nomor,))
+        conn.commit()
+        conn.close()
+        print(f"[RESET] {nomor}")
+        return jsonify({"status": "ok", "nomor": nomor}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
+
 def cek_gar(nomor):
     g = get_garansi(nomor)
     return (jsonify(g), 200) if g else (jsonify({"error": "Tidak terdaftar"}), 404)
